@@ -1,0 +1,174 @@
+@page "/"
+@layout EmptyLayout
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject HighScoreService HighScores
+
+@using Asteroids.Game
+@using Asteroids.Models
+@using Asteroids.Services
+
+<PageTitle>Asteroids</PageTitle>
+
+<div class="game-container">
+    <div class="hud">
+        <div class="hud-panel hud-left">
+            <span class="hud-label">Mission Timer</span>
+            <span class="hud-value">@GameMath.FormatTime(_gameState.ElapsedTime)</span>
+            <div class="hud-sub">Best @(_bestTime) · @_gameState.AsteroidsRemaining asteroids</div>
+        </div>
+
+        <div class="hud-panel hud-right">
+            <span class="hud-label">Shields</span>
+            <div class="lives-display">
+                @for (var i = 0; i < GameConstants.InitialLives; i++)
+                {
+                    <span class="life-pip @(i < _gameState.Lives ? "" : "spent")"></span>
+                }
+            </div>
+            <div class="build-info">ASTEROIDS · BLAZOR WASM</div>
+        </div>
+
+        @if (_gameState.IsGameOver)
+        {
+            <div class="overlay-message">GAME OVER</div>
+        }
+
+        @if (_gameState.HasWon)
+        {
+            <div class="overlay-victory">
+                <div class="victory-title">VICTORY!</div>
+                <div class="victory-subtitle">Top 10 Best Times:</div>
+                @for (var i = 0; i < _highScores.Count; i++)
+                {
+                    <div class="victory-score">@(i + 1). @GameMath.FormatTime(_highScores[i])</div>
+                }
+                <div class="victory-hint">Start a new game with SPACEBAR</div>
+            </div>
+        }
+    </div>
+
+    <canvas @ref="_canvasRef" class="game-canvas"></canvas>
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+    private DotNetObjectReference<Game>? _dotNetRef;
+    private readonly GameEngine _engine = new();
+    private GameState _gameState = new()
+    {
+        Lives = GameConstants.InitialLives,
+        ElapsedTime = 0,
+        IsGameOver = false,
+        HasWon = false,
+        AsteroidsRemaining = 0
+    };
+    private List<double> _highScores = [];
+    private string _bestTime = "--:--";
+    private System.Threading.Timer? _hudTimer;
+    private bool _initialized;
+    private readonly List<double> _pendingScores = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+        _initialized = true;
+
+        _highScores = await HighScores.GetHighScoresAsync();
+        _bestTime = _highScores.Count > 0 ? GameMath.FormatTime(_highScores[0]) : "--:--";
+
+        _engine.OnScoreRecorded = score => _pendingScores.Add(score);
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        var width = await JS.InvokeAsync<int>("gameLoop.getViewportWidth");
+        var height = await JS.InvokeAsync<int>("gameLoop.getViewportHeight");
+        _engine.Initialize(width, height);
+
+        await JS.InvokeVoidAsync("gameLoop.start", _canvasRef, _dotNetRef);
+
+        _hudTimer = new System.Threading.Timer(_ =>
+        {
+            _engine.SyncHudState();
+            _ = InvokeAsync(() =>
+            {
+                _gameState = new GameState
+                {
+                    Lives = _engine.State.Lives,
+                    ElapsedTime = _engine.State.ElapsedTime,
+                    IsGameOver = _engine.State.IsGameOver,
+                    HasWon = _engine.State.HasWon,
+                    AsteroidsRemaining = _engine.State.AsteroidsRemaining
+                };
+                StateHasChanged();
+            });
+        }, null, 100, 100);
+    }
+
+    [JSInvokable]
+    public void OnResize(int width, int height)
+    {
+        if (_engine.State.ElapsedTime == 0 && !_engine.State.HasWon && !_engine.State.IsGameOver)
+        {
+            _engine.Initialize(width, height);
+        }
+        else
+        {
+            _engine.Resize(width, height);
+        }
+    }
+
+    [JSInvokable]
+    public FrameResult OnFrame(double deltaMs, InputState? input)
+    {
+        input ??= new InputState();
+        var result = _engine.Update(deltaMs, input);
+
+        if (_pendingScores.Count > 0)
+        {
+            result.PendingScores = [.._pendingScores];
+            _pendingScores.Clear();
+        }
+
+        return result;
+    }
+
+    [JSInvokable]
+    public async Task HandleFrameEvents(bool victoryJustAchieved, bool shouldReset, double[] pendingScores)
+    {
+        foreach (var score in pendingScores)
+        {
+            _highScores = await HighScores.AddHighScoreAsync(score);
+        }
+
+        if (pendingScores.Length > 0)
+        {
+            _bestTime = _highScores.Count > 0 ? GameMath.FormatTime(_highScores[0]) : "--:--";
+        }
+
+        if (victoryJustAchieved)
+        {
+            _gameState = _engine.State;
+            StateHasChanged();
+        }
+
+        if (shouldReset)
+        {
+            _engine.ResetGame();
+            _highScores = await HighScores.GetHighScoresAsync();
+            _bestTime = _highScores.Count > 0 ? GameMath.FormatTime(_highScores[0]) : "--:--";
+            _gameState = _engine.State;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _hudTimer?.Dispose();
+        if (_initialized)
+        {
+            await JS.InvokeVoidAsync("gameLoop.stop");
+        }
+        _dotNetRef?.Dispose();
+    }
+}
