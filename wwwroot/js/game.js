@@ -680,7 +680,10 @@ window.gameLoop = (() => {
             window.addEventListener('keyup', onKey(false));
             window.addEventListener('resize', resize);
 
-            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+            const isTouch = ('ontouchstart' in window) || 
+                            (navigator.maxTouchPoints > 0) || 
+                            (navigator.msMaxTouchPoints > 0) ||
+                            (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
             if (isTouch) {
                 const container = document.querySelector('.game-container');
                 if (container) {

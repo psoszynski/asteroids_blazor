@@ -526,6 +526,18 @@ h1:focus {
     pointer-events: auto;
 }
 
+@media (pointer: coarse) {
+    .mobile-restart-btn {
+        display: inline-block;
+    }
+    .desktop-only {
+        display: none !important;
+    }
+    .touch-zones-container {
+        display: grid !important;
+    }
+}
+
 .is-touch .mobile-restart-btn {
     display: inline-block;
 }
