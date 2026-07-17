@@ -266,31 +266,42 @@ az storage table create \
 
 #### Step 2: Configure Authentication (Choose Option A or B)
 
-##### Option A: Secure Managed Identity (Recommended - No credentials stored!)
+> [!NOTE]
+> **Free vs. Standard SWA Tier:**
+> *   **Option A (Managed Identity)** requires the **Standard SKU** (paid tier) of Azure Static Web Apps. The Free SKU does not support managed identities.
+> *   **Option B (Connection String)** is **fully supported on the Free SKU** and allows you to keep hosting 100% free.
+
+##### Option A: Secure Managed Identity (Requires Standard SWA Tier)
 This configures the Azure Static Web App to authenticate using its system-assigned identity to connect securely via Entra ID (Azure AD):
 
 ```bash
-# 1. Enable System-Assigned Managed Identity on SWA and save the principal ID
+# 1. Upgrade SWA to Standard SKU (required for managed identities)
+az staticwebapp update \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --sku Standard
+
+# 2. Enable System-Assigned Managed Identity on SWA and save the principal ID
 export PRINCIPAL_ID=$(az staticwebapp identity assign \
   --name "$SWA_NAME" \
   --resource-group "$RESOURCE_GROUP" \
   --query "principalId" \
   -o tsv)
 
-# 2. Retrieve the Storage Account's Azure resource ID
+# 3. Retrieve the Storage Account's Azure resource ID
 export STORAGE_ID=$(az storage account show \
   --name "$STORAGE_NAME" \
   --resource-group "$RESOURCE_GROUP" \
   --query "id" \
   -o tsv)
 
-# 3. Assign "Storage Table Data Contributor" role to the SWA's identity at the Storage Account scope
+# 4. Assign "Storage Table Data Contributor" role to SWA's identity at the Storage Account scope
 az role assignment create \
   --assignee "$PRINCIPAL_ID" \
   --role "Storage Table Data Contributor" \
   --scope "$STORAGE_ID"
 
-# 4. Set the environment variables on SWA to activate Managed Identity connection mode
+# 5. Set the environment variables on SWA to activate Managed Identity connection mode
 az staticwebapp appsettings set \
   --name "$SWA_NAME" \
   --resource-group "$RESOURCE_GROUP" \
@@ -299,8 +310,8 @@ az staticwebapp appsettings set \
     "TableStorageConnectionString=UseManagedIdentity"
 ```
 
-##### Option B: Storage Connection String (Traditional)
-If you prefer not to use Managed Identity, you can set a connection string:
+##### Option B: Storage Connection String (100% Free SKU Compatible)
+If you are using the Free SWA tier, configure SWA with the Storage Account connection string:
 
 ```bash
 # 1. Retrieve the connection string from the storage account keys
