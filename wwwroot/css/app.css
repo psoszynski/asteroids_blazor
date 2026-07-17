@@ -561,7 +561,7 @@ h1:focus {
     height: 18vh;
     min-height: 110px;
     display: none;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: 1fr 1fr 1fr 3fr;
     z-index: 20;
     pointer-events: auto;
     border-top: 1px solid rgba(110, 220, 255, 0.12);
