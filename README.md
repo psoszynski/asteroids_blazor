@@ -140,17 +140,56 @@ az staticwebapp secrets list \
 
 ### 4. Optional: one-off deploy from your machine
 
+Local deploys use the **Azure Static Web Apps CLI** (npm package `@azure/static-web-apps-cli`). The binary is `swa`. You need **Node.js / npm** and a **deployment token** (same secret as GitHub Actions).
+
+#### Build the static site first
+
 ```bash
 dotnet publish Asteroids.csproj -c Release -o ./publish
 cp staticwebapp.config.json ./publish/wwwroot/staticwebapp.config.json
-
-# Requires Node.js / npm for the SWA CLI
-npx @azure/static-web-apps-cli deploy ./publish/wwwroot \
-  --deployment-token "$(az staticwebapp secrets list \
-    -g "$RESOURCE_GROUP" -n "$SWA_NAME" \
-    --query "properties.apiKey" -o tsv)" \
-  --env production
 ```
+
+#### Get a deployment token
+
+```bash
+export SWA_CLI_DEPLOYMENT_TOKEN="$(az staticwebapp secrets list \
+  -g "$RESOURCE_GROUP" -n "$SWA_NAME" \
+  --query "properties.apiKey" -o tsv)"
+```
+
+Or pass `--deployment-token "…"` on every command instead of setting the env var.
+
+#### Two ways to run the CLI (same tool)
+
+| Approach | When to use | How you invoke deploy |
+| :--- | :--- | :--- |
+| **A. Global `swa`** | Daily local use; CLI already installed | `swa deploy …` |
+| **B. `npx`** | No global install; clean machine; scripts/docs that should “just work” | `npx @azure/static-web-apps-cli deploy …` |
+
+There is **no functional difference** for deploy: same CLI, same flags, same token. `npx` only changes *how* the package is downloaded/run.
+
+**A — Install once globally, then use `swa` (recommended for regular local deploys)**
+
+```bash
+npm install -g @azure/static-web-apps-cli
+
+swa deploy ./publish/wwwroot --env production
+# or explicitly:
+# swa deploy ./publish/wwwroot --deployment-token "$SWA_CLI_DEPLOYMENT_TOKEN" --env production
+```
+
+**B — Run via `npx` (no global install)**
+
+```bash
+npx @azure/static-web-apps-cli deploy ./publish/wwwroot --env production
+# or:
+# npx @azure/static-web-apps-cli deploy ./publish/wwwroot \
+#   --deployment-token "$SWA_CLI_DEPLOYMENT_TOKEN" --env production
+```
+
+Optional: pin a CLI version with `npx @azure/static-web-apps-cli@2 …`.
+
+> **Note:** GitHub Actions does **not** use `swa` on the runner. CI uses the `Azure/static-web-apps-deploy` action with secret `AZURE_STATIC_WEB_APPS_API_TOKEN` (see [GitHub CI/CD](#-github-cicd-actions) below).
 
 ### 5. Clean up
 
@@ -242,7 +281,9 @@ Example (this deployment): `https://gray-ocean-0fb38d103.7.azurestaticapps.net`
 
 | Symptom | What to check |
 | :--- | :--- |
-| Deploy step fails with token / unauthorized | Secret name must be exactly `AZURE_STATIC_WEB_APPS_API_TOKEN`; rotate token in Portal if leaked |
+| `deployment_token was not provided` | Secret is missing or empty. Create **Actions** secret `AZURE_STATIC_WEB_APPS_API_TOKEN` with the SWA deployment token (see above). Fork PR workflows cannot read repo secrets. |
+| Deploy step fails with unauthorized | Wrong token, or token for a different SWA app; re-copy from Portal / `az staticwebapp secrets list` |
+| Warning: Unexpected input `skip_api_build` | Not a valid input for `Azure/static-web-apps-deploy@v1` — omit it (workflow already does) |
 | Tests fail in CI | Run `dotnet test tests/Asteroids.Tests/Asteroids.Tests.csproj -c Release` locally |
 | Blank page / 404 on deep links | Ensure `staticwebapp.config.json` is in the deployed `wwwroot` (workflow copies it) |
 | Wrong .NET version | Workflow pins `10.0.x` to match `TargetFramework` in `Asteroids.csproj` |

@@ -62,15 +62,15 @@ jobs:
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
+          # Requires repo secret AZURE_STATIC_WEB_APPS_API_TOKEN (SWA deployment token)
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           # Pre-built with dotnet publish — upload wwwroot as-is
+          # (skip_api_build is not a valid input on this action; omit API fields)
           app_location: "publish/wwwroot"
-          api_location: ""
           output_location: ""
           skip_app_build: true
-          skip_api_build: true
 
   close_pull_request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
