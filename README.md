@@ -130,7 +130,8 @@ Standalone Blazor WebAssembly is hosted on **Azure Static Web Apps** (not Linux 
 export RESOURCE_GROUP="MyTestRg"
 export LOCATION="westeurope"
 export SWA_NAME="my-blazor-swa-431"
-export SWA_SKU="Free"   # Free | Standard
+export SWA_SKU="Free"      # Free | Standard
+export STORAGE_NAME="mystorage431" # Must be globally unique, 3-24 alphanumeric characters
 ```
 
 ### 1. Resource group
@@ -239,40 +240,82 @@ az group delete --name "$RESOURCE_GROUP" --yes --no-wait
 
 ### 6. Setting Up the Global Leaderboard (Azure Storage Table)
 
-To make the global leaderboard work, the backend API requires access to an Azure Storage Table. You can set this up using either a secure **Connection String** or via **System-Assigned Managed Identity (RBAC)**.
+To make the global leaderboard work, the backend API requires access to an Azure Storage Table. You can set this up using the Azure CLI using either a secure **System-Assigned Managed Identity (RBAC)** or a traditional **Connection String**.
 
-#### Step 1: Create the Storage Table
-1. Open the Azure Portal and create a standard **Storage Account** (or use an existing one).
-2. Go to **Storage Browser** -> **Tables** (or click **Tables** under Data Storage).
-3. Create a table named exactly **`AsteroidsLeaderboard`**.
+Ensure you have your variables configured:
+```bash
+# Verify variables are set in your current shell
+echo "Group: $RESOURCE_GROUP, SWA: $SWA_NAME, Storage: $STORAGE_NAME, Location: $LOCATION"
+```
+
+#### Step 1: Create the Storage Account & Table
+Run these commands to provision the storage resource and create the high-scores table:
+```bash
+# 1. Create a Standard LRS Storage Account
+az storage account create \
+  --name "$STORAGE_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --sku Standard_LRS
+
+# 2. Create the Table named "AsteroidsLeaderboard"
+az storage table create \
+  --name "AsteroidsLeaderboard" \
+  --account-name "$STORAGE_NAME"
+```
 
 #### Step 2: Configure Authentication (Choose Option A or B)
 
-##### Option A: Secure Managed Identity (Recommended - No passwords/keys required!)
-1. In the Azure Portal, go to your **Static Web App** instance.
-2. Under **Settings**, click on **Identity**.
-3. Toggle the status of the **System assigned** identity to **On** and save.
-4. Go to your **Storage Account** instance.
-5. Select **Access Control (IAM)** -> **Add role assignment**.
-6. Select **`Storage Table Data Contributor`** as the role and click Next.
-7. Choose **Managed Identity** as the assignee type, click **Select members**, select **Static Web App** as the category, and choose your app name.
-8. Click **Review + assign**.
-9. In the Azure Portal, go back to your **Static Web App** -> **Environment variables** (under Settings).
-10. Add a new Application Setting:
-    * **Name:** `TableStorageUri`
-    * **Value:** `https://<your-storage-account-name>.table.core.windows.net`
-11. Add another setting to enable Managed Identity connection mode:
-    * **Name:** `TableStorageConnectionString`
-    * **Value:** `UseManagedIdentity`
+##### Option A: Secure Managed Identity (Recommended - No credentials stored!)
+This configures the Azure Static Web App to authenticate using its system-assigned identity to connect securely via Entra ID (Azure AD):
+
+```bash
+# 1. Enable System-Assigned Managed Identity on SWA and save the principal ID
+export PRINCIPAL_ID=$(az staticwebapp identity assign \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "principalId" \
+  -o tsv)
+
+# 2. Retrieve the Storage Account's Azure resource ID
+export STORAGE_ID=$(az storage account show \
+  --name "$STORAGE_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "id" \
+  -o tsv)
+
+# 3. Assign "Storage Table Data Contributor" role to the SWA's identity at the Storage Account scope
+az role assignment create \
+  --assignee "$PRINCIPAL_ID" \
+  --role "Storage Table Data Contributor" \
+  --scope "$STORAGE_ID"
+
+# 4. Set the environment variables on SWA to activate Managed Identity connection mode
+az staticwebapp appsettings set \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --setting-names \
+    "TableStorageUri=https://$STORAGE_NAME.table.core.windows.net" \
+    "TableStorageConnectionString=UseManagedIdentity"
+```
 
 ##### Option B: Storage Connection String (Traditional)
-1. Go to your **Storage Account** in the Azure Portal.
-2. Click **Access keys** (under Security + networking).
-3. Copy the **Connection string** (from Key 1 or Key 2).
-4. Go to your **Static Web App** -> **Environment variables** (under Settings).
-5. Add a new Application Setting:
-   * **Name:** `TableStorageConnectionString`
-   * **Value:** `<your-copied-connection-string>`
+If you prefer not to use Managed Identity, you can set a connection string:
+
+```bash
+# 1. Retrieve the connection string from the storage account keys
+export CONNECTION_STRING=$(az storage account show-connection-string \
+  --name "$STORAGE_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "connectionString" \
+  -o tsv)
+
+# 2. Set the connection string variable on SWA
+az staticwebapp appsettings set \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --setting-names "TableStorageConnectionString=$CONNECTION_STRING"
+```
 
 ---
 
