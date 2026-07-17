@@ -72,12 +72,183 @@ When loaded on mobile devices, interactive touch zones are displayed at the bott
 ### Build for Production
 To generate a compiled bundle optimized for static hosting (e.g. GitHub Pages, Azure Static Web Apps, Cloudflare Pages):
 ```bash
-dotnet publish -c Release
+dotnet publish -c Release -o ./publish
 ```
-The output static assets will be located in the `bin/Release/net10.0/publish/wwwroot` folder.
+The output static assets will be located in `publish/wwwroot`.
+
+### Run unit tests
+```bash
+dotnet test tests/Asteroids.Tests/Asteroids.Tests.csproj -c Release
+```
+
+---
+
+## ☁️ Azure infrastructure (Static Web Apps)
+
+Standalone Blazor WebAssembly is hosted on **Azure Static Web Apps** (not Linux App Service). Navigation fallback for client-side routes is configured in [`staticwebapp.config.json`](staticwebapp.config.json).
+
+### Prerequisites
+* [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and logged in: `az login`
+* An active Azure subscription: `az account show`
+
+### Variables (customize as needed)
+
+```bash
+export RESOURCE_GROUP="MyTestRg"
+export LOCATION="westeurope"
+export SWA_NAME="my-blazor-swa-431"
+export SWA_SKU="Free"   # Free | Standard
+```
+
+### 1. Resource group
+
+```bash
+az group create \
+  --name "$RESOURCE_GROUP" \
+  --location "$LOCATION"
+```
+
+Skip this step if the group already exists.
+
+### 2. Create the Static Web App
+
+Create the app with **Other** as the source (no GitHub link yet). CI/CD is wired via the workflow and deployment token below.
+
+```bash
+az staticwebapp create \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --sku "$SWA_SKU"
+```
+
+### 3. Inspect the site
+
+```bash
+# Default hostname (e.g. https://….azurestaticapps.net)
+az staticwebapp show \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "defaultHostname" -o tsv
+
+# Deployment token (keep secret — used by GitHub Actions)
+az staticwebapp secrets list \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "properties.apiKey" -o tsv
+```
+
+### 4. Optional: one-off deploy from your machine
+
+```bash
+dotnet publish Asteroids.csproj -c Release -o ./publish
+cp staticwebapp.config.json ./publish/wwwroot/staticwebapp.config.json
+
+# Requires Node.js / npm for the SWA CLI
+npx @azure/static-web-apps-cli deploy ./publish/wwwroot \
+  --deployment-token "$(az staticwebapp secrets list \
+    -g "$RESOURCE_GROUP" -n "$SWA_NAME" \
+    --query "properties.apiKey" -o tsv)" \
+  --env production
+```
+
+### 5. Clean up
+
+```bash
+# Delete only the Static Web App
+az staticwebapp delete \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --yes
+
+# Or delete the entire resource group
+az group delete --name "$RESOURCE_GROUP" --yes --no-wait
+```
+
+---
+
+## 🔄 GitHub CI/CD (Actions)
+
+Pipeline file: [`.github/workflows/azure-static-web-apps.yml`](.github/workflows/azure-static-web-apps.yml)
+
+### What the workflow does
+
+| Trigger | Job | Behavior |
+| :--- | :--- | :--- |
+| `push` to `main` | **Build, Test, and Deploy** | Restore → build → test → publish → deploy to production SWA |
+| `pull_request` opened/sync/reopened on `main` | **Build, Test, and Deploy** | Same pipeline; SWA creates a **staging** environment for the PR |
+| `pull_request` closed | **Close Pull Request** | Tears down the SWA staging environment |
+
+Steps in the main job:
+
+1. **Checkout** repository  
+2. **Setup .NET** `10.0.x`  
+3. **Restore** app + test projects  
+4. **Build** `Asteroids.csproj` (Release)  
+5. **Test** `tests/Asteroids.Tests/Asteroids.Tests.csproj`  
+6. **Publish** to `./publish` and copy `staticwebapp.config.json` into `wwwroot`  
+7. **Deploy** with `Azure/static-web-apps-deploy@v1` (`skip_app_build: true`, upload `publish/wwwroot`)
+
+### Required GitHub secret
+
+| Secret name | Description |
+| :--- | :--- |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | Deployment token for the Static Web App (API key) |
+
+`GITHUB_TOKEN` is provided automatically by Actions (used for PR comments / staging). You do **not** add it manually.
+
+#### Add the secret (GitHub UI)
+
+1. Open the repo on GitHub → **Settings** → **Secrets and variables** → **Actions**  
+2. **New repository secret**  
+3. Name: `AZURE_STATIC_WEB_APPS_API_TOKEN`  
+4. Value: output of:
+
+```bash
+az staticwebapp secrets list \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "properties.apiKey" -o tsv
+```
+
+#### Add the secret (GitHub CLI)
+
+```bash
+# Requires: gh auth login
+az staticwebapp secrets list \
+  --name "$SWA_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "properties.apiKey" -o tsv \
+| gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN
+```
+
+### After setup
+
+```bash
+git add .github/workflows/azure-static-web-apps.yml
+git commit -m "Add Azure Static Web Apps CI/CD workflow"
+git push origin main
+```
+
+Then open **Actions** on GitHub and confirm the workflow is green. The live site is:
+
+```text
+https://<defaultHostname from az staticwebapp show>
+```
+
+Example (this deployment): `https://gray-ocean-0fb38d103.7.azurestaticapps.net`
+
+### Troubleshooting
+
+| Symptom | What to check |
+| :--- | :--- |
+| Deploy step fails with token / unauthorized | Secret name must be exactly `AZURE_STATIC_WEB_APPS_API_TOKEN`; rotate token in Portal if leaked |
+| Tests fail in CI | Run `dotnet test tests/Asteroids.Tests/Asteroids.Tests.csproj -c Release` locally |
+| Blank page / 404 on deep links | Ensure `staticwebapp.config.json` is in the deployed `wwwroot` (workflow copies it) |
+| Wrong .NET version | Workflow pins `10.0.x` to match `TargetFramework` in `Asteroids.csproj` |
 
 ---
 
 ## 🏗️ Architecture Deep-Dive
 
-For a detailed walkthrough of the game loop sequence, data structures, JS interop boundaries, and coordinate systems, see [ARCHITECTURE.md](file:///Users/przemek/programming/asteroids_blazor/ARCHITECTURE.md).
+For a detailed walkthrough of the game loop sequence, data structures, JS interop boundaries, and coordinate systems, see [ARCHITECTURE.md](ARCHITECTURE.md).

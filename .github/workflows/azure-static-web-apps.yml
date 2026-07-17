@@ -1,0 +1,84 @@
+# Build, test, and deploy Blazor WebAssembly to Azure Static Web Apps.
+#
+# Required GitHub secret:
+#   AZURE_STATIC_WEB_APPS_API_TOKEN
+# Get it from:
+#   Azure Portal → Static Web App (my-blazor-swa-431) → Manage deployment token
+#   or: az staticwebapp secrets list -g MyTestRg -n my-blazor-swa-431 --query "properties.apiKey" -o tsv
+
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+
+jobs:
+  build_and_deploy:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build, Test, and Deploy
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: |
+          dotnet restore Asteroids.csproj
+          dotnet restore tests/Asteroids.Tests/Asteroids.Tests.csproj
+
+      - name: Build
+        run: dotnet build Asteroids.csproj --configuration Release --no-restore
+
+      - name: Test
+        run: >
+          dotnet test tests/Asteroids.Tests/Asteroids.Tests.csproj
+          --configuration Release
+          --verbosity normal
+
+      - name: Publish
+        run: |
+          dotnet publish Asteroids.csproj \
+            --configuration Release \
+            --output ./publish
+          # Navigation fallback for client-side routes
+          if [ -f staticwebapp.config.json ]; then
+            cp staticwebapp.config.json ./publish/wwwroot/staticwebapp.config.json
+          fi
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          # Pre-built with dotnet publish — upload wwwroot as-is
+          app_location: "publish/wwwroot"
+          api_location: ""
+          output_location: ""
+          skip_app_build: true
+          skip_api_build: true
+
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request
+    steps:
+      - name: Close Static Web Apps staging environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "close"
