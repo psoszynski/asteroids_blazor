@@ -281,11 +281,12 @@ az staticwebapp update \
   --resource-group "$RESOURCE_GROUP" \
   --sku Standard
 
-# 2. Enable System-Assigned Managed Identity on SWA and save the principal ID
-export PRINCIPAL_ID=$(az staticwebapp identity assign \
-  --name "$SWA_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --query "principalId" \
+# 2. Enable System-Assigned Managed Identity on SWA using raw REST PATCH (bypasses Azure CLI serialization bugs)
+export SUBSCRIPTION_ID=$(az account show --query "id" -o tsv)
+export PRINCIPAL_ID=$(az rest --method patch \
+  --uri "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/staticSites/$SWA_NAME?api-version=2022-03-01" \
+  --body '{"identity":{"type":"SystemAssigned"}}' \
+  --query "identity.principalId" \
   -o tsv)
 
 # 3. Retrieve the Storage Account's Azure resource ID
