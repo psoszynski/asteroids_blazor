@@ -67,8 +67,8 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           # Pre-built with dotnet publish — upload wwwroot as-is
-          # (skip_api_build is not a valid input on this action; omit API fields)
           app_location: "publish/wwwroot"
+          api_location: "api"
           output_location: ""
           skip_app_build: true
 

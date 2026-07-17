@@ -101,6 +101,7 @@ public class HighScoreEntry
     public double SurvivalTime { get; set; }
     /// <summary>ISO-8601 timestamp; null for legacy scores stored before dates were tracked.</summary>
     public string? PlayedAt { get; set; }
+    public string? Username { get; set; }
 }
 
 public enum SoundEffect

@@ -130,36 +130,182 @@
     private System.Threading.Timer? _hudTimer;
     private bool _initialized;
     private readonly List<HighScoreEntry> _pendingScores = [];
-    /// <summary>
-    /// Sticky game-over flag for the overlay. Once set, only an explicit restart clears it.
-    /// Prevents the popup from vanishing due to HUD timer / frame races.
-    /// </summary>
     private bool _gameOverLatched;
     private bool _restartInProgress;
 
+    // Global Leaderboard variables
+    private bool _showGlobalLeaderboard = true;
+    private List<HighScoreEntry>? _globalScores;
+    private bool _loadingGlobal;
+    private string _username = "";
+    private string _usernameInput = "";
+    private string _registerError = "";
+    private bool _registering;
+    private int _lastRunScore;
+    private double _lastRunTime;
+    private bool _scoreSubmitted;
+
     private RenderFragment RenderLeaderboard() => __builder =>
     {
-        if (_highScores.Count == 0)
+        <div class="leaderboard-tabs">
+            <button class="tab-btn @(!_showGlobalLeaderboard ? "active" : "")" @onclick="() => ToggleLeaderboardTab(false)">LOCAL</button>
+            <button class="tab-btn @(_showGlobalLeaderboard ? "active" : "")" @onclick="() => ToggleLeaderboardTab(true)">GLOBAL</button>
+        </div>
+
+        if (!_showGlobalLeaderboard)
         {
-            <div class="leaderboard-empty">No records yet</div>
+            if (_highScores.Count == 0)
+            {
+                <div class="leaderboard-empty">No local records yet</div>
+            }
+            else
+            {
+                <div class="leaderboard-list">
+                    @for (var idx = 0; idx < Math.Min(5, _highScores.Count); idx++)
+                    {
+                        var entry = _highScores[idx];
+                        <div class="leaderboard-row">
+                            <span class="leaderboard-rank">#@(idx + 1)</span>
+                            <div class="leaderboard-entry">
+                                <span class="leaderboard-value">@entry.Score.ToString("N0") (@GameMath.FormatTime(entry.SurvivalTime))</span>
+                                <span class="leaderboard-date">@GameMath.FormatPlayedAt(entry.PlayedAt)</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
         }
         else
         {
-            <div class="leaderboard-list">
-                @for (var idx = 0; idx < Math.Min(5, _highScores.Count); idx++)
-                {
-                    var entry = _highScores[idx];
-                    <div class="leaderboard-row">
-                        <span class="leaderboard-rank">#@(idx + 1)</span>
-                        <div class="leaderboard-entry">
-                            <span class="leaderboard-value">@entry.Score.ToString("N0") (@GameMath.FormatTime(entry.SurvivalTime))</span>
-                            <span class="leaderboard-date">@GameMath.FormatPlayedAt(entry.PlayedAt)</span>
+            if (_loadingGlobal)
+            {
+                <div class="leaderboard-empty loading-spinner">Loading global scores...</div>
+            }
+            else if (_globalScores == null)
+            {
+                <div class="leaderboard-empty">Failed to load global scores</div>
+            }
+            else if (_globalScores.Count == 0)
+            {
+                <div class="leaderboard-empty">No global records yet</div>
+            }
+            else
+            {
+                <div class="leaderboard-list">
+                    @for (var idx = 0; idx < Math.Min(5, _globalScores.Count); idx++)
+                    {
+                        var entry = _globalScores[idx];
+                        <div class="leaderboard-row">
+                            <span class="leaderboard-rank">#@(idx + 1)</span>
+                            <div class="leaderboard-entry">
+                                <span class="leaderboard-name">@(entry.Username ?? "Anonymous")</span>
+                                <span class="leaderboard-value">@entry.Score.ToString("N0") (@GameMath.FormatTime(entry.SurvivalTime))</span>
+                            </div>
                         </div>
+                    }
+                </div>
+            }
+
+            if (string.IsNullOrEmpty(_username) && _gameOverLatched)
+            {
+                <div class="registration-panel">
+                    <div class="reg-title">Claim username to submit score:</div>
+                    <div class="reg-form">
+                        <input class="reg-input" placeholder="Name (3-20 chars)" @bind="_usernameInput" @bind:event="oninput" maxlength="20" disabled="@_registering" />
+                        <button class="reg-btn" @onclick="RegisterAndSubmitScore" disabled="@_registering">
+                            @(_registering ? "..." : "CLAIM")
+                        </button>
                     </div>
-                }
-            </div>
+                    @if (!string.IsNullOrEmpty(_registerError))
+                    {
+                        <div class="reg-error">@_registerError</div>
+                    }
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(_username) && _gameOverLatched)
+            {
+                <div class="reg-welcome">Playing as: <span class="reg-username">@_username</span></div>
+            }
         }
     };
+
+    private void ToggleLeaderboardTab(bool showGlobal)
+    {
+        _showGlobalLeaderboard = showGlobal;
+        if (showGlobal && _globalScores == null)
+        {
+            _ = LoadGlobalLeaderboardAsync();
+        }
+    }
+
+    private async Task LoadGlobalLeaderboardAsync()
+    {
+        if (_loadingGlobal) return;
+        _loadingGlobal = true;
+        _registerError = "";
+        StateHasChanged();
+        
+        try
+        {
+            _globalScores = await HighScores.GetGlobalHighScoresAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[LoadGlobal Error] {ex}");
+        }
+        finally
+        {
+            _loadingGlobal = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RegisterAndSubmitScore()
+    {
+        if (string.IsNullOrWhiteSpace(_usernameInput))
+        {
+            _registerError = "Username cannot be empty.";
+            return;
+        }
+
+        _registerError = "";
+        _registering = true;
+        StateHasChanged();
+
+        try
+        {
+            var regResult = await HighScores.RegisterUsernameAsync(_usernameInput);
+            if (regResult.Success)
+            {
+                _username = regResult.CleanedName;
+                await HighScores.SaveUsernameAsync(_username);
+                
+                if (_lastRunScore > 0 && !_scoreSubmitted)
+                {
+                    var success = await HighScores.SubmitGlobalScoreAsync(_username, _lastRunScore, _lastRunTime);
+                    if (success)
+                    {
+                        _scoreSubmitted = true;
+                    }
+                }
+                
+                _ = LoadGlobalLeaderboardAsync();
+            }
+            else
+            {
+                _registerError = regResult.ErrorMessage;
+            }
+        }
+        catch (Exception ex)
+        {
+            _registerError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _registering = false;
+            StateHasChanged();
+        }
+    }
 
     private void RefreshBestTime() =>
         _bestTime = _highScores.Count > 0
@@ -226,6 +372,10 @@
 
         _highScores = await HighScores.GetHighScoresAsync();
         RefreshBestTime();
+
+        _username = await HighScores.GetSavedUsernameAsync() ?? "";
+        _usernameInput = _username;
+        _ = LoadGlobalLeaderboardAsync();
 
         _engine.OnScoreRecorded = (score, time) => _pendingScores.Add(new HighScoreEntry { Score = score, SurvivalTime = time });
 
@@ -301,6 +451,19 @@
             foreach (var entry in pendingScores)
             {
                 _highScores = await HighScores.AddHighScoreAsync(entry.Score, entry.SurvivalTime);
+                _lastRunScore = entry.Score;
+                _lastRunTime = entry.SurvivalTime;
+                _scoreSubmitted = false;
+                
+                if (!string.IsNullOrEmpty(_username))
+                {
+                    var success = await HighScores.SubmitGlobalScoreAsync(_username, entry.Score, entry.SurvivalTime);
+                    if (success)
+                    {
+                        _scoreSubmitted = true;
+                    }
+                    _ = LoadGlobalLeaderboardAsync();
+                }
             }
 
             if (pendingScores.Length > 0)

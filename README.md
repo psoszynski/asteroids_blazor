@@ -56,25 +56,58 @@ When loaded on mobile devices, interactive touch zones are displayed at the bott
 ## 🛠️ Build & Run Locally
 
 ### Prerequisites
-*   [.NET 10.0 SDK](https://dotnet.microsoft.com/download)
+*   [.NET 10.0 SDK](https://dotnet.microsoft.com/download) (for the Blazor app)
+*   [.NET 8.0 SDK](https://dotnet.microsoft.com/download) (for the API backend)
+*   [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) (for local API hosting)
+*   [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite) (or an active Azure Storage connection string for local table storage emulator)
+*   [Azure Static Web Apps CLI](https://learn.microsoft.com/en-us/azure/static-web-apps/local-development) (`npm install -g @azure/static-web-apps-cli`)
 
-### Run the Application
-1. Clone the repository and navigate to the project directory:
+### Run the Application (Frontend + Backend API Proxy)
+
+To run both the Blazor client and the Azure Functions API locally with proper proxying:
+
+1. **Start the local Storage Emulator (Azurite):**
    ```bash
-   cd asteroids_blazor
+   # If installed via npm:
+   azurite --silent
    ```
-2. Restore dependencies and start the local development server:
+2. **Start the API backend:**
+   In a new terminal:
    ```bash
-   dotnet run
+   cd api
+   dotnet restore
+   func start
+   # This starts the functions on http://localhost:7071
    ```
-3. Open your browser and navigate to the local hosting address displayed in the terminal console (typically `http://localhost:5000` or `https://localhost:5001`).
+3. **Start the Blazor client:**
+   In another terminal:
+   ```bash
+   dotnet watch
+   # This starts the app on http://localhost:5000 / https://localhost:5001
+   ```
+4. **Start the SWA CLI Emulator (Proxies both under one port):**
+   In a third terminal:
+   ```bash
+   swa start http://localhost:5000 --api-location http://localhost:7071
+   ```
+5. Open your browser and navigate to **`http://localhost:4280`** (the SWA emulator port). This port hosts your game and proxies `/api/*` requests to your local functions seamlessly.
+
+### Run client only (offline mode)
+If you just want to run the client-side game without the API:
+```bash
+dotnet run
+```
+And open the hosting address (e.g. `http://localhost:5000`).
 
 ### Build for Production
-To generate a compiled bundle optimized for static hosting (e.g. GitHub Pages, Azure Static Web Apps, Cloudflare Pages):
+To generate a compiled bundle optimized for static hosting:
 ```bash
+# Publish the client WASM
 dotnet publish -c Release -o ./publish
+# Copy staticwebapp config to output
+cp staticwebapp.config.json ./publish/wwwroot/staticwebapp.config.json
 ```
-The output static assets will be located in `publish/wwwroot`.
+*(The API will be built automatically from `/api` by the Azure SWA deployment action on git push).*
 
 ### Run unit tests
 ```bash
@@ -203,6 +236,43 @@ az staticwebapp delete \
 # Or delete the entire resource group
 az group delete --name "$RESOURCE_GROUP" --yes --no-wait
 ```
+
+### 6. Setting Up the Global Leaderboard (Azure Storage Table)
+
+To make the global leaderboard work, the backend API requires access to an Azure Storage Table. You can set this up using either a secure **Connection String** or via **System-Assigned Managed Identity (RBAC)**.
+
+#### Step 1: Create the Storage Table
+1. Open the Azure Portal and create a standard **Storage Account** (or use an existing one).
+2. Go to **Storage Browser** -> **Tables** (or click **Tables** under Data Storage).
+3. Create a table named exactly **`AsteroidsLeaderboard`**.
+
+#### Step 2: Configure Authentication (Choose Option A or B)
+
+##### Option A: Secure Managed Identity (Recommended - No passwords/keys required!)
+1. In the Azure Portal, go to your **Static Web App** instance.
+2. Under **Settings**, click on **Identity**.
+3. Toggle the status of the **System assigned** identity to **On** and save.
+4. Go to your **Storage Account** instance.
+5. Select **Access Control (IAM)** -> **Add role assignment**.
+6. Select **`Storage Table Data Contributor`** as the role and click Next.
+7. Choose **Managed Identity** as the assignee type, click **Select members**, select **Static Web App** as the category, and choose your app name.
+8. Click **Review + assign**.
+9. In the Azure Portal, go back to your **Static Web App** -> **Environment variables** (under Settings).
+10. Add a new Application Setting:
+    * **Name:** `TableStorageUri`
+    * **Value:** `https://<your-storage-account-name>.table.core.windows.net`
+11. Add another setting to enable Managed Identity connection mode:
+    * **Name:** `TableStorageConnectionString`
+    * **Value:** `UseManagedIdentity`
+
+##### Option B: Storage Connection String (Traditional)
+1. Go to your **Storage Account** in the Azure Portal.
+2. Click **Access keys** (under Security + networking).
+3. Copy the **Connection string** (from Key 1 or Key 2).
+4. Go to your **Static Web App** -> **Environment variables** (under Settings).
+5. Add a new Application Setting:
+   * **Name:** `TableStorageConnectionString`
+   * **Value:** `<your-copied-connection-string>`
 
 ---
 

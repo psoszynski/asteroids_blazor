@@ -712,3 +712,139 @@ h1:focus {
         margin-left: auto;
     }
 }
+
+/* Leaderboard Global/Local Tabs and Username Registration */
+.leaderboard-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.tab-btn {
+    background: transparent;
+    border: 1px solid rgba(110, 220, 255, 0.25);
+    color: rgba(110, 220, 255, 0.5);
+    padding: 6px 14px;
+    font-size: 11px;
+    font-family: 'Share Tech Mono', monospace;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    pointer-events: auto;
+}
+
+.tab-btn.active {
+    background: rgba(110, 220, 255, 0.15);
+    border-color: #7ef9ff;
+    color: #7ef9ff;
+    box-shadow: 0 0 10px rgba(110, 240, 255, 0.3);
+    text-shadow: 0 0 5px rgba(110, 240, 255, 0.5);
+}
+
+.tab-btn:hover:not(.active) {
+    border-color: rgba(110, 220, 255, 0.5);
+    color: rgba(110, 220, 255, 0.8);
+}
+
+.leaderboard-name {
+    flex: 1;
+    text-align: left;
+    color: #a5f3fc;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 8px;
+}
+
+.registration-panel {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(110, 220, 255, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+.reg-title {
+    font-size: 11px;
+    color: rgba(110, 220, 255, 0.6);
+}
+
+.reg-form {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    max-width: 220px;
+}
+
+.reg-input {
+    background: rgba(3, 8, 20, 0.8);
+    border: 1px solid rgba(110, 220, 255, 0.3);
+    border-radius: 4px;
+    color: #fff;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+    flex: 1;
+    outline: none;
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.2s ease;
+}
+
+.reg-input:focus {
+    border-color: #7ef9ff;
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5), 0 0 8px rgba(110, 240, 255, 0.25);
+}
+
+.reg-btn {
+    background: linear-gradient(135deg, rgba(110, 220, 255, 0.3), rgba(110, 220, 255, 0.1));
+    border: 1px solid rgba(110, 220, 255, 0.5);
+    color: #7ef9ff;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.reg-btn:hover:not(:disabled) {
+    background: rgba(110, 220, 255, 0.4);
+    box-shadow: 0 0 8px rgba(110, 240, 255, 0.3);
+}
+
+.reg-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.reg-error {
+    font-size: 10px;
+    color: #ff6b7a;
+    text-align: center;
+}
+
+.reg-welcome {
+    margin-top: 14px;
+    font-size: 11px;
+    color: rgba(110, 220, 255, 0.65);
+    border-top: 1px dashed rgba(110, 220, 255, 0.1);
+    padding-top: 8px;
+}
+
+.reg-username {
+    color: #7ef9ff;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(110, 240, 255, 0.3);
+}
+
+.loading-spinner {
+    color: rgba(110, 220, 255, 0.6);
+    font-style: italic;
+}

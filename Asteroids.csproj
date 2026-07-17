@@ -5,8 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
-    <!-- Keep unit tests out of the Blazor app compile (SDK globs **/*.cs under project root). -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildThisFileDirectory)tests/**</DefaultItemExcludes>
+    <!-- Keep unit tests and api backend out of the Blazor app compile (SDK globs **/*.cs under project root). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildThisFileDirectory)tests/**;$(MSBuildThisFileDirectory)api/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
