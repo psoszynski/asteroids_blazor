@@ -573,6 +573,13 @@ window.gameLoop = (() => {
     };
 
     const onKey = (pressed) => (e) => {
+        // If the user is currently typing in an input or textarea, do not hijack keys
+        if (document.activeElement && 
+            (document.activeElement.tagName === 'INPUT' || 
+             document.activeElement.tagName === 'TEXTAREA')) {
+            return;
+        }
+
         if (pressed && (e.key === 'p' || e.key === 'P')) {
             pausePulse = true;
             e.preventDefault();
