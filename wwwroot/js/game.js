@@ -165,6 +165,16 @@ window.gameSound = (() => {
                 case 'Victory': playVictory(); break;
                 case 'FireworkCrackle': playFireworkCrackle(); break;
             }
+        },
+        resume: () => {
+            if (!engine) engine = createEngine();
+            if (engine && engine.ctx && engine.ctx.state === 'suspended') {
+                engine.ctx.resume().then(() => {
+                    console.log('AudioContext resumed successfully');
+                }).catch(err => {
+                    console.error('Failed to resume AudioContext:', err);
+                });
+            }
         }
     };
 })();
@@ -361,6 +371,53 @@ window.gameRenderer = (() => {
         }
     };
 
+    const POWERUP_COLORS = {
+        0: { fill: '#5ce8ff', glow: '#2ab8ff', label: 'S' },
+        1: { fill: '#ffb347', glow: '#ff6a00', label: 'R' },
+        2: { fill: '#d98cff', glow: '#b44dff', label: 'T' }
+    };
+
+    const drawPowerUps = (ctx, powerUps, time) => {
+        for (const powerUp of powerUps) {
+            const style = POWERUP_COLORS[powerUp.type] || POWERUP_COLORS[0];
+            const pulse = 0.75 + 0.25 * Math.sin(time * 0.008 + powerUp.x * 0.02);
+            const radius = 10 + pulse * 2;
+
+            ctx.save();
+            ctx.translate(powerUp.x, powerUp.y);
+            ctx.rotate(time * 0.002);
+
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = style.glow;
+            ctx.strokeStyle = style.fill;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = style.fill;
+            ctx.font = 'bold 11px Share Tech Mono, monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(style.label, 0, 1);
+            ctx.restore();
+        }
+    };
+
+    const drawShieldRing = (ctx, player, time) => {
+        const pulse = 0.85 + 0.15 * Math.sin(time * 0.01);
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        ctx.strokeStyle = `rgba(92, 232, 255, ${0.55 + pulse * 0.25})`;
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = '#5ce8ff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 24 * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    };
+
     const drawProjectiles = (ctx, projectiles) => {
         for (const p of projectiles) {
             const speed = Math.hypot(p.velocityX || 0, p.velocityY || 0);
@@ -415,6 +472,9 @@ window.gameRenderer = (() => {
             shakeAmount *= 0.88;
 
             ctx.save();
+            const scaleFactor = (w && w > 0) ? (window.innerWidth / w) : 1.0;
+            ctx.scale(scaleFactor, scaleFactor);
+
             if (shakeAmount > 0.2) {
                 const sx = (Math.random() - 0.5) * shakeAmount;
                 const sy = (Math.random() - 0.5) * shakeAmount;
@@ -429,9 +489,11 @@ window.gameRenderer = (() => {
             drawTrail(ctx, dt);
 
             if (frame.asteroids) drawAsteroids(ctx, frame.asteroids);
+            if (frame.powerUps) drawPowerUps(ctx, frame.powerUps, time);
             if (frame.projectiles) drawProjectiles(ctx, frame.projectiles);
 
             if (frame.drawPlayer && frame.player) {
+                if (frame.hasShield) drawShieldRing(ctx, frame.player, time);
                 drawPlayer(ctx, frame.player, frame.invulnerable, frame.thrusting);
             }
 
@@ -453,6 +515,54 @@ window.gameLoop = (() => {
     let canvas = null;
     let ctx = null;
     let input = { up: false, down: false, left: false, right: false, space: false };
+    let touchInput = { left: false, right: false, up: false, space: false };
+    let pausePulse = false;
+
+    let virtualWidth = window.innerWidth;
+    let virtualHeight = window.innerHeight;
+
+    const calculateVirtualDimensions = () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const minLogicalWidth = (w < h) ? 800 : 1100;
+        if (w < minLogicalWidth) {
+            const scaleFactor = w / minLogicalWidth;
+            virtualWidth = minLogicalWidth;
+            virtualHeight = h / scaleFactor;
+        } else {
+            virtualWidth = w;
+            virtualHeight = h;
+        }
+    };
+
+    calculateVirtualDimensions();
+
+    const setupTouchControls = () => {
+        const bindZone = (id, key) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            const handleStart = (e) => {
+                touchInput[key] = true;
+                el.classList.add('active');
+                e.preventDefault();
+            };
+            const handleEnd = (e) => {
+                touchInput[key] = false;
+                el.classList.remove('active');
+                e.preventDefault();
+            };
+
+            el.addEventListener('touchstart', handleStart, { passive: false });
+            el.addEventListener('touchend', handleEnd, { passive: false });
+            el.addEventListener('touchcancel', handleEnd, { passive: false });
+        };
+
+        bindZone('touch-left', 'left');
+        bindZone('touch-right', 'right');
+        bindZone('touch-thrust', 'up');
+        bindZone('touch-fire', 'space');
+    };
 
     const keyMap = {
         ArrowUp: 'up', w: 'up', W: 'up',
@@ -463,6 +573,12 @@ window.gameLoop = (() => {
     };
 
     const onKey = (pressed) => (e) => {
+        if (pressed && (e.key === 'p' || e.key === 'P')) {
+            pausePulse = true;
+            e.preventDefault();
+            return;
+        }
+
         const key = keyMap[e.key];
         if (!key) return;
         input[key] = pressed;
@@ -473,10 +589,11 @@ window.gameLoop = (() => {
 
     const resize = () => {
         if (!canvas) return;
+        calculateVirtualDimensions();
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         if (dotNetRef) {
-            dotNetRef.invokeMethod('OnResize', canvas.width, canvas.height);
+            dotNetRef.invokeMethod('OnResize', Math.round(virtualWidth), Math.round(virtualHeight));
         }
     };
 
@@ -494,11 +611,10 @@ window.gameLoop = (() => {
 
     const handleFrameEvents = (frame) => {
         const hasScores = frame.pendingScores && frame.pendingScores.length > 0;
-        if (!frame.victoryJustAchieved && !frame.shouldReset && !hasScores) return;
+        if (!frame.shouldReset && !hasScores) return;
 
         dotNetRef.invokeMethodAsync(
             'HandleFrameEvents',
-            !!frame.victoryJustAchieved,
             !!frame.shouldReset,
             frame.pendingScores || []
         );
@@ -520,7 +636,17 @@ window.gameLoop = (() => {
         prevTime = time;
         framePending = true;
 
-        dotNetRef.invokeMethodAsync('OnFrame', delta, input)
+        const frameInput = {
+            up: input.up || touchInput.up,
+            down: input.down,
+            left: input.left || touchInput.left,
+            right: input.right || touchInput.right,
+            space: input.space || touchInput.space,
+            pause: pausePulse
+        };
+        pausePulse = false;
+
+        dotNetRef.invokeMethodAsync('OnFrame', delta, frameInput)
             .then((frame) => {
                 if (!frame) return;
                 window.gameRenderer.render(ctx, frame, delta);
@@ -534,8 +660,11 @@ window.gameLoop = (() => {
     };
 
     return {
-        getViewportWidth: () => window.innerWidth,
-        getViewportHeight: () => window.innerHeight,
+        getViewportWidth: () => Math.round(virtualWidth),
+        getViewportHeight: () => Math.round(virtualHeight),
+        togglePause: () => {
+            pausePulse = true;
+        },
         start: (canvasEl, ref) => {
             canvas = canvasEl instanceof HTMLCanvasElement
                 ? canvasEl
@@ -551,6 +680,15 @@ window.gameLoop = (() => {
             window.addEventListener('keyup', onKey(false));
             window.addEventListener('resize', resize);
 
+            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+            if (isTouch) {
+                const container = document.querySelector('.game-container');
+                if (container) {
+                    container.classList.add('is-touch');
+                }
+                setTimeout(setupTouchControls, 100);
+            }
+
             resize();
             prevTime = null;
             animationId = requestAnimationFrame(animate);
@@ -563,6 +701,18 @@ window.gameLoop = (() => {
             animationId = null;
             prevTime = null;
             dotNetRef = null;
+            touchInput = { left: false, right: false, up: false, space: false };
         }
     };
 })();
+
+// Global gesture listener to unlock Web Audio on iOS Safari / Mobile browsers
+const handleUserGestureAudio = () => {
+    if (window.gameSound && typeof window.gameSound.resume === 'function') {
+        window.gameSound.resume();
+        window.removeEventListener('touchstart', handleUserGestureAudio);
+        window.removeEventListener('click', handleUserGestureAudio);
+    }
+};
+window.addEventListener('touchstart', handleUserGestureAudio, { passive: true });
+window.addEventListener('click', handleUserGestureAudio, { passive: true });

@@ -15,7 +15,34 @@
         <div class="hud-panel hud-left">
             <span class="hud-label">Mission Timer</span>
             <span class="hud-value">@GameMath.FormatTime(_gameState.ElapsedTime)</span>
-            <div class="hud-sub">Best @(_bestTime) · @_gameState.AsteroidsRemaining asteroids</div>
+            <div class="hud-sub">Wave @_gameState.Level · Best @(_bestTime) · @_gameState.AsteroidsRemaining asteroids</div>
+        </div>
+
+        <div class="hud-panel hud-center">
+            <div class="hud-center-header">
+                <span class="hud-label">Score</span>
+                <button class="hud-pause-btn" @onclick="OnPauseToggle" title="Press P to Pause/Resume">
+                    @(_gameState.IsPaused ? "▶ RESUME" : "❚❚ PAUSE")
+                </button>
+            </div>
+            <span class="hud-value">@_gameState.Score.ToString("N0")</span>
+            @if (_gameState.HasShield || _gameState.RapidFireRemaining > 0 || _gameState.TripleShotRemaining > 0)
+            {
+                <div class="powerup-bar">
+                    @if (_gameState.HasShield)
+                    {
+                        <span class="powerup-badge powerup-shield">SHIELD</span>
+                    }
+                    @if (_gameState.RapidFireRemaining > 0)
+                    {
+                        <span class="powerup-badge powerup-rapid">RAPID @_gameState.RapidFireRemaining.ToString("0.0")s</span>
+                    }
+                    @if (_gameState.TripleShotRemaining > 0)
+                    {
+                        <span class="powerup-badge powerup-triple">TRIPLE @_gameState.TripleShotRemaining.ToString("0.0")s</span>
+                    }
+                </div>
+            }
         </div>
 
         <div class="hud-panel hud-right">
@@ -29,45 +56,168 @@
             <div class="build-info">ASTEROIDS · BLAZOR WASM</div>
         </div>
 
-        @if (_gameState.IsGameOver)
+        @if (_gameState.IsPaused && !_gameOverLatched)
         {
-            <div class="overlay-message">GAME OVER</div>
+            <div class="overlay-pause" @onclick="OnPauseToggle">
+                <div class="pause-title">PAUSED</div>
+                <div class="pause-hint">Tap here or press P to resume</div>
+                
+                <div class="leaderboard-panel">
+                    <div class="leaderboard-title">🏆 LEADERBOARD</div>
+                    @RenderLeaderboard()
+                </div>
+            </div>
         }
 
-        @if (_gameState.HasWon)
+        @if (_gameState.IsWaveTransition)
         {
-            <div class="overlay-victory">
-                <div class="victory-title">VICTORY!</div>
-                <div class="victory-subtitle">Top 10 Best Times:</div>
-                @for (var i = 0; i < _highScores.Count; i++)
-                {
-                    <div class="victory-score">@(i + 1). @GameMath.FormatTime(_highScores[i])</div>
-                }
-                <div class="victory-hint">Start a new game with SPACEBAR</div>
+            <div class="overlay-wave">
+                <div class="wave-title">WAVE @_gameState.Level</div>
+                <div class="wave-subtitle">@GameMath.GetWaveAsteroidCount(_gameState.Level) asteroids incoming</div>
+            </div>
+        }
+
+        @if (_gameOverLatched)
+        {
+            <div class="overlay-gameover">
+                <div class="gameover-title">GAME OVER</div>
+                <div class="gameover-stats">
+                    <div>Score: @_gameState.Score.ToString("N0")</div>
+                    <div>Wave @_gameState.Level reached</div>
+                    <div>Survival Time: @GameMath.FormatTime(_gameState.ElapsedTime)</div>
+                </div>
+                
+                <div class="leaderboard-panel">
+                    <div class="leaderboard-title">🏆 LEADERBOARD</div>
+                    @RenderLeaderboard()
+                </div>
+
+                <div class="gameover-hint desktop-only">Press SPACEBAR to restart</div>
+                <button class="mobile-restart-btn" @onclick="OnMobileRestart">TAP TO RESTART</button>
             </div>
         }
     </div>
 
     <canvas @ref="_canvasRef" class="game-canvas"></canvas>
+
+    <div class="touch-zones-container">
+        <div class="touch-zone zone-rotate-left" id="touch-left">
+            <span class="zone-icon">◀</span>
+            <span class="zone-label">ROTATE</span>
+        </div>
+        <div class="touch-zone zone-rotate-right" id="touch-right">
+            <span class="zone-icon">▶</span>
+            <span class="zone-label">ROTATE</span>
+        </div>
+        <div class="touch-zone zone-thrust" id="touch-thrust">
+            <span class="zone-icon">▲</span>
+            <span class="zone-label">THRUST</span>
+        </div>
+        <div class="touch-zone zone-fire" id="touch-fire">
+            <span class="zone-icon">✸</span>
+            <span class="zone-label">FIRE</span>
+        </div>
+    </div>
 </div>
 
 @code {
     private ElementReference _canvasRef;
     private DotNetObjectReference<Game>? _dotNetRef;
     private readonly GameEngine _engine = new();
-    private GameState _gameState = new()
+    private GameState _gameState = CreateInitialGameState();
+    private List<HighScoreEntry> _highScores = [];
+    private string _bestTime = "--:--";
+    private System.Threading.Timer? _hudTimer;
+    private bool _initialized;
+    private readonly List<HighScoreEntry> _pendingScores = [];
+    /// <summary>
+    /// Sticky game-over flag for the overlay. Once set, only an explicit restart clears it.
+    /// Prevents the popup from vanishing due to HUD timer / frame races.
+    /// </summary>
+    private bool _gameOverLatched;
+    private bool _restartInProgress;
+
+    private RenderFragment RenderLeaderboard() => __builder =>
+    {
+        if (_highScores.Count == 0)
+        {
+            <div class="leaderboard-empty">No records yet</div>
+        }
+        else
+        {
+            <div class="leaderboard-list">
+                @for (var idx = 0; idx < Math.Min(5, _highScores.Count); idx++)
+                {
+                    var entry = _highScores[idx];
+                    <div class="leaderboard-row">
+                        <span class="leaderboard-rank">#@(idx + 1)</span>
+                        <div class="leaderboard-entry">
+                            <span class="leaderboard-value">@entry.Score.ToString("N0") (@GameMath.FormatTime(entry.SurvivalTime))</span>
+                            <span class="leaderboard-date">@GameMath.FormatPlayedAt(entry.PlayedAt)</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    };
+
+    private void RefreshBestTime() =>
+        _bestTime = _highScores.Count > 0
+            ? $"{_highScores[0].Score.ToString("N0")} ({GameMath.FormatTime(_highScores[0].SurvivalTime)})"
+            : "--";
+
+    private static GameState CreateInitialGameState() => new()
     {
         Lives = GameConstants.InitialLives,
         ElapsedTime = 0,
         IsGameOver = false,
-        HasWon = false,
+        IsPaused = false,
+        Score = 0,
+        Level = 1,
+        IsWaveTransition = false,
         AsteroidsRemaining = 0
     };
-    private List<double> _highScores = [];
-    private string _bestTime = "--:--";
-    private System.Threading.Timer? _hudTimer;
-    private bool _initialized;
-    private readonly List<double> _pendingScores = [];
+
+    private static GameState CopyGameState(GameState source) => new()
+    {
+        Lives = source.Lives,
+        ElapsedTime = source.ElapsedTime,
+        IsGameOver = source.IsGameOver,
+        IsPaused = source.IsPaused,
+        Score = source.Score,
+        Level = source.Level,
+        IsWaveTransition = source.IsWaveTransition,
+        HasShield = source.HasShield,
+        RapidFireRemaining = source.RapidFireRemaining,
+        TripleShotRemaining = source.TripleShotRemaining,
+        AsteroidsRemaining = source.AsteroidsRemaining
+    };
+
+    /// <summary>
+    /// Applies engine HUD snapshot into component state. Latches game-over so the overlay
+    /// cannot be cleared by a later stale snapshot.
+    /// </summary>
+    private void ApplyHudSnapshot(GameState source, bool requestRender)
+    {
+        if (source.IsGameOver)
+        {
+            _gameOverLatched = true;
+        }
+
+        var next = CopyGameState(source);
+        if (_gameOverLatched)
+        {
+            next.IsGameOver = true;
+            next.IsPaused = false;
+        }
+
+        _gameState = next;
+
+        if (requestRender)
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -75,9 +225,9 @@
         _initialized = true;
 
         _highScores = await HighScores.GetHighScoresAsync();
-        _bestTime = _highScores.Count > 0 ? GameMath.FormatTime(_highScores[0]) : "--:--";
+        RefreshBestTime();
 
-        _engine.OnScoreRecorded = score => _pendingScores.Add(score);
+        _engine.OnScoreRecorded = (score, time) => _pendingScores.Add(new HighScoreEntry { Score = score, SurvivalTime = time });
 
         _dotNetRef = DotNetObjectReference.Create(this);
 
@@ -92,14 +242,7 @@
             _engine.SyncHudState();
             _ = InvokeAsync(() =>
             {
-                _gameState = new GameState
-                {
-                    Lives = _engine.State.Lives,
-                    ElapsedTime = _engine.State.ElapsedTime,
-                    IsGameOver = _engine.State.IsGameOver,
-                    HasWon = _engine.State.HasWon,
-                    AsteroidsRemaining = _engine.State.AsteroidsRemaining
-                };
+                ApplyHudSnapshot(_engine.State, requestRender: false);
                 StateHasChanged();
             });
         }, null, 100, 100);
@@ -108,13 +251,14 @@
     [JSInvokable]
     public void OnResize(int width, int height)
     {
-        if (_engine.State.ElapsedTime == 0 && !_engine.State.HasWon && !_engine.State.IsGameOver)
+        // Never re-initialize after the run has started or once game over is latched.
+        if (_gameOverLatched || _engine.State.IsGameOver || _engine.State.ElapsedTime > 0)
         {
-            _engine.Initialize(width, height);
+            _engine.Resize(width, height);
         }
         else
         {
-            _engine.Resize(width, height);
+            _engine.Initialize(width, height);
         }
     }
 
@@ -123,6 +267,22 @@
     {
         input ??= new InputState();
         var result = _engine.Update(deltaMs, input);
+
+        var hud = result.HudState;
+        var needsImmediateRender =
+            hud.IsGameOver != _gameState.IsGameOver ||
+            hud.IsPaused != _gameState.IsPaused ||
+            hud.IsWaveTransition != _gameState.IsWaveTransition ||
+            hud.Level != _gameState.Level ||
+            hud.HasShield != _gameState.HasShield ||
+            Math.Abs(hud.RapidFireRemaining - _gameState.RapidFireRemaining) > 0.05 ||
+            Math.Abs(hud.TripleShotRemaining - _gameState.TripleShotRemaining) > 0.05 ||
+            (hud.IsGameOver && !_gameOverLatched);
+
+        if (needsImmediateRender)
+        {
+            ApplyHudSnapshot(hud, requestRender: true);
+        }
 
         if (_pendingScores.Count > 0)
         {
@@ -134,32 +294,65 @@
     }
 
     [JSInvokable]
-    public async Task HandleFrameEvents(bool victoryJustAchieved, bool shouldReset, double[] pendingScores)
+    public async Task HandleFrameEvents(bool shouldReset, HighScoreEntry[] pendingScores)
     {
-        foreach (var score in pendingScores)
+        try
         {
-            _highScores = await HighScores.AddHighScoreAsync(score);
-        }
+            foreach (var entry in pendingScores)
+            {
+                _highScores = await HighScores.AddHighScoreAsync(entry.Score, entry.SurvivalTime);
+            }
 
-        if (pendingScores.Length > 0)
-        {
-            _bestTime = _highScores.Count > 0 ? GameMath.FormatTime(_highScores[0]) : "--:--";
-        }
+            if (pendingScores.Length > 0)
+            {
+                RefreshBestTime();
+                // Keep game-over overlay visible while leaderboard text updates.
+                if (_gameOverLatched)
+                {
+                    StateHasChanged();
+                }
+            }
 
-        if (victoryJustAchieved)
-        {
-            _gameState = _engine.State;
-            StateHasChanged();
+            if (shouldReset)
+            {
+                await RestartGameAsync();
+            }
         }
-
-        if (shouldReset)
+        catch (Exception ex)
         {
+            Console.WriteLine($"[HandleFrameEvents Error] {ex}");
+        }
+    }
+
+    private async Task OnMobileRestart()
+    {
+        if (!_engine.CanRestartFromGameOver()) return;
+        await RestartGameAsync();
+    }
+
+    private async Task RestartGameAsync()
+    {
+        if (_restartInProgress) return;
+        _restartInProgress = true;
+
+        try
+        {
+            _gameOverLatched = false;
             _engine.ResetGame();
             _highScores = await HighScores.GetHighScoresAsync();
-            _bestTime = _highScores.Count > 0 ? GameMath.FormatTime(_highScores[0]) : "--:--";
-            _gameState = _engine.State;
+            RefreshBestTime();
+            ApplyHudSnapshot(_engine.State, requestRender: false);
             StateHasChanged();
         }
+        finally
+        {
+            _restartInProgress = false;
+        }
+    }
+
+    private async Task OnPauseToggle()
+    {
+        await JS.InvokeVoidAsync("gameLoop.togglePause");
     }
 
     public async ValueTask DisposeAsync()

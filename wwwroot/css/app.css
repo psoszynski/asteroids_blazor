@@ -60,6 +60,7 @@ html, body {
 }
 
 .hud-left,
+.hud-center,
 .hud-right {
     color: #dff8ff;
     font-size: 18px;
@@ -67,6 +68,14 @@ html, body {
     letter-spacing: 0.06em;
     line-height: 1.6;
     text-shadow: 0 0 12px rgba(110, 240, 255, 0.45);
+}
+
+.hud-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    min-width: 140px;
 }
 
 .hud-right {
@@ -87,6 +96,43 @@ html, body {
 .hud-value {
     font-size: 22px;
     color: #f4feff;
+}
+
+.powerup-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.powerup-badge {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+}
+
+.powerup-shield {
+    color: #b8f4ff;
+    background: rgba(40, 120, 160, 0.35);
+    border-color: rgba(92, 232, 255, 0.45);
+    box-shadow: 0 0 12px rgba(92, 232, 255, 0.25);
+}
+
+.powerup-rapid {
+    color: #ffe2b8;
+    background: rgba(160, 90, 20, 0.35);
+    border-color: rgba(255, 160, 60, 0.45);
+    box-shadow: 0 0 12px rgba(255, 140, 40, 0.25);
+}
+
+.powerup-triple {
+    color: #f0d0ff;
+    background: rgba(100, 40, 140, 0.35);
+    border-color: rgba(200, 120, 255, 0.45);
+    box-shadow: 0 0 12px rgba(180, 90, 255, 0.25);
 }
 
 .hud-sub {
@@ -122,18 +168,191 @@ html, body {
     border: 1px solid rgba(80, 120, 150, 0.3);
 }
 
-.overlay-message {
+.overlay-pause {
     position: absolute;
     top: 50vh;
     left: 50vw;
     transform: translate(-50%, -50%);
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    background: linear-gradient(135deg, rgba(8, 16, 32, 0.82), rgba(4, 10, 24, 0.72));
+    border: 1px solid rgba(120, 200, 255, 0.35);
+    border-radius: 16px;
+    padding: 28px 44px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 40px rgba(80, 160, 255, 0.12);
+    pointer-events: auto;
+    z-index: 20;
+}
+
+.pause-title {
+    font-size: 42px;
+    font-weight: 700;
+    color: #8ed4ff;
+    letter-spacing: 0.2em;
+    text-shadow: 0 0 24px rgba(142, 212, 255, 0.5);
+}
+
+.pause-hint {
+    margin-top: 16px;
+    font-size: 14px;
+    color: rgba(180, 220, 255, 0.75);
+    letter-spacing: 0.1em;
+}
+
+.overlay-wave {
+    position: absolute;
+    top: 50vh;
+    left: 50vw;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    background: linear-gradient(135deg, rgba(12, 28, 18, 0.85), rgba(6, 16, 24, 0.75));
+    border: 1px solid rgba(100, 255, 160, 0.35);
+    border-radius: 16px;
+    padding: 28px 44px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 40px rgba(80, 255, 140, 0.15);
+    pointer-events: none;
+    animation: wave-pop 0.35s ease-out;
+}
+
+.wave-title {
+    font-size: 48px;
+    font-weight: 700;
+    color: #6dffb0;
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 24px rgba(109, 255, 176, 0.6);
+}
+
+.wave-subtitle {
+    margin-top: 12px;
+    font-size: 14px;
+    color: rgba(180, 255, 210, 0.8);
+    letter-spacing: 0.1em;
+}
+
+@keyframes wave-pop {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.92);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.overlay-gameover {
+    position: absolute;
+    top: 50vh;
+    left: 50vw;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    background: linear-gradient(135deg, rgba(24, 8, 12, 0.85), rgba(12, 4, 6, 0.75));
+    border: 1px solid rgba(255, 100, 120, 0.35);
+    border-radius: 16px;
+    padding: 24px 36px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 0 40px rgba(255, 80, 100, 0.15);
+    z-index: 20;
+    pointer-events: auto;
+}
+
+.gameover-title {
     color: #ff6b7a;
-    font-size: 56px;
-    font-family: 'Share Tech Mono', 'SF Mono', monospace;
+    font-size: 42px;
     font-weight: 700;
     letter-spacing: 0.18em;
-    text-shadow: 0 0 30px rgba(255, 80, 100, 0.8), 0 0 60px rgba(255, 40, 60, 0.4);
+    text-shadow: 0 0 24px rgba(255, 80, 100, 0.6);
+    margin-bottom: 12px;
     animation: pulse-glow 1.6s ease-in-out infinite;
+}
+
+.gameover-stats {
+    font-size: 16px;
+    color: rgba(255, 200, 210, 0.9);
+    letter-spacing: 0.08em;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.gameover-hint {
+    margin-top: 16px;
+    font-size: 13px;
+    color: #ffd76a;
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Leaderboard Panel styling */
+.leaderboard-panel {
+    margin: 14px auto;
+    padding: 12px 16px;
+    background: rgba(110, 220, 255, 0.05);
+    border: 1px solid rgba(110, 220, 255, 0.15);
+    border-radius: 8px;
+    box-shadow: inset 0 0 10px rgba(110, 220, 255, 0.03);
+    min-width: 220px;
+    max-width: 300px;
+    text-align: center;
+}
+
+.leaderboard-title {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(110, 220, 255, 0.75);
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.leaderboard-empty {
+    font-size: 12px;
+    color: rgba(110, 220, 255, 0.45);
+}
+
+.leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.leaderboard-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    color: #f4feff;
+    letter-spacing: 0.05em;
+    text-align: left;
+}
+
+.leaderboard-rank {
+    color: rgba(110, 220, 255, 0.55);
+    flex-shrink: 0;
+    padding-top: 1px;
+}
+
+.leaderboard-entry {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    min-width: 0;
+}
+
+.leaderboard-value {
+    text-shadow: 0 0 8px rgba(110, 240, 255, 0.3);
+    font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-date {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: rgba(180, 220, 255, 0.55);
+    white-space: nowrap;
 }
 
 .overlay-victory {
@@ -255,4 +474,225 @@ h1:focus {
 
 .loading-progress-text:after {
     content: var(--blazor-load-percentage-text, "Loading");
+}
+
+/* Mobile and Touch layout adjustments */
+
+.hud-center-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.hud-pause-btn {
+    display: inline-block;
+    background: transparent;
+    border: 1px solid rgba(110, 220, 255, 0.4);
+    color: #7ef9ff;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    border-radius: 4px;
+    cursor: pointer;
+    text-shadow: 0 0 5px rgba(110, 240, 255, 0.5);
+    box-shadow: 0 0 8px rgba(110, 240, 255, 0.1);
+    transition: all 0.2s ease;
+    pointer-events: auto;
+}
+
+.hud-pause-btn:active {
+    background: rgba(110, 220, 255, 0.2);
+    border-color: #7ef9ff;
+    box-shadow: 0 0 12px rgba(110, 240, 255, 0.4);
+}
+
+.mobile-restart-btn {
+    display: none;
+    margin-top: 20px;
+    background: linear-gradient(135deg, rgba(255, 107, 122, 0.3), rgba(255, 40, 60, 0.15));
+    border: 1px solid rgba(255, 107, 122, 0.5);
+    color: #ff9fa8;
+    padding: 12px 28px;
+    font-size: 16px;
+    font-family: 'Share Tech Mono', monospace;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 0 15px rgba(255, 107, 122, 0.15);
+    text-shadow: 0 0 8px rgba(255, 107, 122, 0.5);
+    transition: all 0.2s ease;
+    pointer-events: auto;
+}
+
+.is-touch .mobile-restart-btn {
+    display: inline-block;
+}
+
+.mobile-restart-btn:active {
+    background: rgba(255, 107, 122, 0.5);
+    color: #fff;
+    box-shadow: 0 0 25px rgba(255, 107, 122, 0.4);
+}
+
+.is-touch .desktop-only {
+    display: none !important;
+}
+
+/* Touch Control Zones Styling (Scheme C) */
+.touch-zones-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 18vh;
+    min-height: 110px;
+    display: none;
+    grid-template-columns: repeat(4, 1fr);
+    z-index: 20;
+    pointer-events: auto;
+    border-top: 1px solid rgba(110, 220, 255, 0.12);
+    background: linear-gradient(to top, rgba(3, 8, 20, 0.65), rgba(3, 8, 20, 0.1));
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.is-touch .touch-zones-container {
+    display: grid;
+}
+
+.touch-zone {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-right: 1px solid rgba(110, 220, 255, 0.08);
+    color: rgba(110, 220, 255, 0.35);
+    transition: all 0.12s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+.touch-zone:last-child {
+    border-right: none;
+}
+
+.zone-icon {
+    font-size: 24px;
+    margin-bottom: 2px;
+    text-shadow: 0 0 8px rgba(110, 220, 255, 0.1);
+    transition: transform 0.1s ease;
+}
+
+.zone-label {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    font-weight: 600;
+}
+
+/* Interactive touch feedback states */
+.touch-zone.active {
+    background: rgba(110, 220, 255, 0.1);
+    color: #7ef9ff;
+    text-shadow: 0 0 15px rgba(110, 240, 255, 0.8), 0 0 30px rgba(110, 240, 255, 0.4);
+    border-top: 3px solid rgba(110, 240, 255, 0.8);
+}
+
+.touch-zone.active .zone-icon {
+    transform: scale(1.18);
+}
+
+.zone-thrust.active {
+    background: rgba(255, 179, 71, 0.08);
+    color: #ffb347;
+    text-shadow: 0 0 15px rgba(255, 179, 71, 0.8);
+    border-top: 3px solid #ffb347;
+}
+
+.zone-fire.active {
+    background: rgba(255, 107, 122, 0.08);
+    color: #ff6b7a;
+    text-shadow: 0 0 15px rgba(255, 107, 122, 0.8);
+    border-top: 3px solid #ff6b7a;
+}
+
+/* Mobile HUD adjustments for smaller devices */
+@media (max-width: 768px) {
+    .hud {
+        padding: 12px 16px;
+    }
+    .hud-panel {
+        padding: 8px 12px;
+    }
+    .hud-value {
+        font-size: 18px;
+    }
+    .hud-sub, .build-info {
+        display: none !important;
+    }
+    .hud-center {
+        min-width: 100px;
+    }
+    .overlay-gameover {
+        padding: 16px 24px;
+        width: 85%;
+        max-width: 300px;
+    }
+    .gameover-title {
+        font-size: 32px;
+    }
+    .gameover-stats {
+        font-size: 13px;
+    }
+    .overlay-pause {
+        padding: 20px 30px;
+    }
+    .pause-title {
+        font-size: 32px;
+    }
+    .overlay-wave {
+        padding: 20px 30px;
+    }
+    .wave-title {
+        font-size: 36px;
+    }
+}
+
+/* Portrait orientation layout restructuring */
+@media (orientation: portrait) {
+    .hud {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .hud-left {
+        order: 1;
+        flex: 1 1 45%;
+    }
+    .hud-right {
+        order: 2;
+        flex: 1 1 45%;
+        text-align: right;
+    }
+    .hud-center {
+        order: 3;
+        position: static;
+        transform: none;
+        flex: 1 1 100%;
+        margin-top: 4px;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        min-width: 0;
+    }
+    .hud-center-header {
+        margin-bottom: 0;
+        gap: 6px;
+    }
+    .powerup-bar {
+        margin-top: 0;
+        margin-left: auto;
+    }
 }

@@ -1,24 +1,77 @@
-# Build outputs
-bin/
-obj/
-*.suo
-*.user
+## Visual Studio / dotnet Core template gitignore
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Re]leases/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
 
-# NuGet
-nuget.config
+# Visual Studio files
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.suo.tmp
+
+# Rider / IntelliJ / VS Code
+.idea/
+.vscode/
+*.sln.iml
+*.sln.DotSettings.user
+
+# OS-generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# User-specific files (e.g. personal env/settings)
+.env
+.env.local
+.env.*.local
+
+# Blazor / Web compiler / CSS isolation outputs
+*.styles.css
+obj/
+
+# NuGet Packages
 *.nupkg
 *.snupkg
+# Restore cache
+project.lock.json
+project.fragment.lock.json
+artifacts/
 
-# IDE
-.vs/
-.vscode/
-.idea/
-*.swp
-*~
+# Local History for Visual Studio
+.localhistory/
 
-# Blazor
-Asteroids.styles.css
+# Node/NPM/Yarn (if any JS build tools are used)
+node_modules/
+/jspm_packages/
+/web_modules/
+.npm/
+.eslintcache
+.stylelintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# OS
-.DS_Store
-Thumbs.db
+# Crash dumps and logs
+*.log
+*.stackdump
+
+# Large/Temporary zip packages
+*.zip
+*.tar.gz
