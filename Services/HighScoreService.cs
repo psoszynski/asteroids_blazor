@@ -25,23 +25,47 @@ public class HighScoreService(IJSRuntime js, HttpClient http)
         }
     }
 
-    public async Task<(bool Success, string CleanedName, string ErrorMessage)> RegisterUsernameAsync(string username)
+    public class RegisterResult
+    {
+        public bool Success { get; set; }
+        public string CleanedName { get; set; } = string.Empty;
+        public string RecoveryCode { get; set; } = string.Empty;
+        public bool CodeRequired { get; set; }
+        public string ErrorMessage { get; set; } = string.Empty;
+    }
+
+    public async Task<RegisterResult> RegisterUsernameAsync(string username, string? recoveryCode = null)
     {
         try
         {
-            var response = await http.PostAsJsonAsync("api/register", new { Username = username });
+            var response = await http.PostAsJsonAsync("api/register", new { Username = username, RecoveryCode = recoveryCode });
             if (response.IsSuccessStatusCode)
             {
                 var result = await response.Content.ReadFromJsonAsync<RegisterResponse>();
-                return (true, result?.Username ?? username, string.Empty);
+                return new RegisterResult
+                {
+                    Success = true,
+                    CleanedName = result?.Username ?? username,
+                    RecoveryCode = result?.RecoveryCode ?? string.Empty
+                };
             }
             
             var err = await response.Content.ReadAsStringAsync();
-            return (false, string.Empty, string.IsNullOrEmpty(err) ? "Username is already taken or invalid." : err);
+            var statusCode = response.StatusCode;
+            return new RegisterResult
+            {
+                Success = false,
+                CodeRequired = statusCode == System.Net.HttpStatusCode.Conflict || statusCode == System.Net.HttpStatusCode.Unauthorized,
+                ErrorMessage = string.IsNullOrEmpty(err) ? "Username is already taken or invalid." : err
+            };
         }
         catch (Exception ex)
         {
-            return (false, string.Empty, $"Network error: {ex.Message}");
+            return new RegisterResult
+            {
+                Success = false,
+                ErrorMessage = $"Network error: {ex.Message}"
+            };
         }
     }
 
@@ -80,9 +104,31 @@ public class HighScoreService(IJSRuntime js, HttpClient http)
         catch {}
     }
 
+    public async Task<string?> GetSavedRecoveryCodeAsync()
+    {
+        try
+        {
+            return await js.InvokeAsync<string?>("localStorage.getItem", "asteroids_recovery_code");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task SaveRecoveryCodeAsync(string code)
+    {
+        try
+        {
+            await js.InvokeVoidAsync("localStorage.setItem", "asteroids_recovery_code", code);
+        }
+        catch {}
+    }
+
     private class RegisterResponse
     {
         public string Username { get; set; } = string.Empty;
+        public string RecoveryCode { get; set; } = string.Empty;
     }
 
     public async Task<List<HighScoreEntry>> GetHighScoresAsync()

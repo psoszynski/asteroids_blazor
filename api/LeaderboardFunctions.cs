@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Linq;
 using Azure;
 using Azure.Data.Tables;
 using Azure.Identity;
@@ -78,6 +79,14 @@ public class LeaderboardFunctions(ILoggerFactory loggerFactory)
         return response;
     }
 
+    private static string GenerateRandomCode()
+    {
+        const string chars = "ABCDEFGHJKLMNOPQRSTUVWXYZ23456789"; // Omit confusing I, L, 1, 0, O
+        var random = new Random();
+        return new string(Enumerable.Repeat(chars, 6)
+            .Select(s => s[random.Next(s.Length)]).ToArray());
+    }
+
     [Function("RegisterUser")]
     public async Task<HttpResponseData> RegisterUser(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "register")] HttpRequestData req)
@@ -97,6 +106,7 @@ public class LeaderboardFunctions(ILoggerFactory loggerFactory)
 
             var payload = JsonSerializer.Deserialize<RegisterDto>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             var rawUsername = payload?.Username;
+            var clientCode = payload?.RecoveryCode?.Trim().ToUpperInvariant();
 
             if (string.IsNullOrWhiteSpace(rawUsername))
             {
@@ -118,29 +128,84 @@ public class LeaderboardFunctions(ILoggerFactory loggerFactory)
                 return response;
             }
 
+            var normalizedUsername = cleanedUsername.ToLowerInvariant();
+
             var serviceClient = GetTableServiceClient();
             var tableClient = serviceClient.GetTableClient(TableName);
             await tableClient.CreateIfNotExistsAsync();
 
-            var claimEntity = new TableEntity("User", cleanedUsername.ToLowerInvariant())
-            {
-                { "ClaimedAt", DateTimeOffset.UtcNow },
-                { "DisplayName", cleanedUsername } // Preserve original casing
-            };
-
+            TableEntity? existingUser = null;
             try
             {
-                await tableClient.AddEntityAsync(claimEntity);
-                _logger.LogInformation("Username '{Username}' registered successfully.", cleanedUsername);
-                
-                response.StatusCode = HttpStatusCode.OK;
-                await response.WriteAsJsonAsync(new { Username = cleanedUsername });
+                var existingResult = await tableClient.GetEntityAsync<TableEntity>("User", normalizedUsername);
+                existingUser = existingResult.Value;
             }
-            catch (RequestFailedException ex) when (ex.Status == (int)HttpStatusCode.Conflict)
+            catch (RequestFailedException ex) when (ex.Status == (int)HttpStatusCode.NotFound)
             {
-                _logger.LogWarning("Username '{Username}' already taken.", cleanedUsername);
-                response.StatusCode = HttpStatusCode.Conflict;
-                await response.WriteStringAsync("Username is already taken.");
+                // User does not exist, which is fine!
+            }
+
+            if (existingUser == null)
+            {
+                // Create new user
+                var recoveryCode = GenerateRandomCode();
+                var userEntity = new TableEntity("User", normalizedUsername)
+                {
+                    { "ClaimedAt", DateTimeOffset.UtcNow },
+                    { "DisplayName", cleanedUsername },
+                    { "RecoveryCode", recoveryCode },
+                    { "CanBeReclaimed", false }
+                };
+
+                await tableClient.AddEntityAsync(userEntity);
+                _logger.LogInformation("Username '{Username}' registered as new with RecoveryCode '{Code}'.", cleanedUsername, recoveryCode);
+
+                response.StatusCode = HttpStatusCode.OK;
+                await response.WriteAsJsonAsync(new { Username = cleanedUsername, RecoveryCode = recoveryCode });
+            }
+            else
+            {
+                // User exists!
+                var canBeReclaimed = existingUser.GetBoolean("CanBeReclaimed") ?? false;
+                var dbCode = existingUser.GetString("RecoveryCode") ?? string.Empty;
+
+                if (canBeReclaimed)
+                {
+                    // Case A: User has flagged the account as Reclaimable. Overwrite it with a fresh code.
+                    var newRecoveryCode = GenerateRandomCode();
+                    
+                    existingUser["ClaimedAt"] = DateTimeOffset.UtcNow;
+                    existingUser["DisplayName"] = cleanedUsername;
+                    existingUser["RecoveryCode"] = newRecoveryCode;
+                    existingUser["CanBeReclaimed"] = false; // Reset the flag back to false for security
+
+                    await tableClient.UpdateEntityAsync(existingUser, ETag.All, TableUpdateMode.Replace);
+                    _logger.LogInformation("Username '{Username}' reclaimed because CanBeReclaimed was true. New RecoveryCode '{Code}'.", cleanedUsername, newRecoveryCode);
+
+                    response.StatusCode = HttpStatusCode.OK;
+                    await response.WriteAsJsonAsync(new { Username = cleanedUsername, RecoveryCode = newRecoveryCode });
+                }
+                else if (!string.IsNullOrEmpty(clientCode) && clientCode.Equals(dbCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Case B: Client supplied the correct recovery code! Link successfully.
+                    _logger.LogInformation("Username '{Username}' verified successfully with RecoveryCode.", cleanedUsername);
+                    
+                    response.StatusCode = HttpStatusCode.OK;
+                    await response.WriteAsJsonAsync(new { Username = cleanedUsername, RecoveryCode = dbCode });
+                }
+                else
+                {
+                    // Case C: Taken, no code or incorrect code.
+                    _logger.LogWarning("Username '{Username}' taken. ClientCode: '{ClientCode}', DbCode: '{DbCode}'", cleanedUsername, clientCode, dbCode);
+                    
+                    response.StatusCode = string.IsNullOrEmpty(clientCode) 
+                        ? HttpStatusCode.Conflict 
+                        : HttpStatusCode.Unauthorized;
+                    
+                    await response.WriteStringAsync(string.IsNullOrEmpty(clientCode) 
+                        ? "Username is already taken." 
+                        : "Invalid recovery code.");
+                }
             }
         }
         catch (Exception ex)
@@ -237,6 +302,7 @@ public class ScoreDto
 public class RegisterDto
 {
     public string Username { get; set; } = string.Empty;
+    public string? RecoveryCode { get; set; }
 }
 
 public class SubmitScoreDto

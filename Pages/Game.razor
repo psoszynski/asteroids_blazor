@@ -144,6 +144,9 @@
     private int _lastRunScore;
     private double _lastRunTime;
     private bool _scoreSubmitted;
+    private string _savedRecoveryCode = "";
+    private string _recoveryInput = "";
+    private bool _showRecoveryInput;
 
     private RenderFragment RenderLeaderboard() => __builder =>
     {
@@ -208,23 +211,51 @@
 
             if (string.IsNullOrEmpty(_username) && _gameOverLatched)
             {
-                <div class="registration-panel">
-                    <div class="reg-title">Claim username to submit score:</div>
-                    <div class="reg-form">
-                        <input class="reg-input" placeholder="Name (3-20 chars)" @bind="_usernameInput" @bind:event="oninput" maxlength="20" disabled="@_registering" />
-                        <button class="reg-btn" @onclick="RegisterAndSubmitScore" disabled="@_registering">
-                            @(_registering ? "..." : "CLAIM")
-                        </button>
+                if (!_showRecoveryInput)
+                {
+                    <div class="registration-panel">
+                        <div class="reg-title">Claim username to submit score:</div>
+                        <div class="reg-form">
+                            <input class="reg-input" placeholder="Name (3-20 chars)" @bind="_usernameInput" @bind:event="oninput" maxlength="20" disabled="@_registering" />
+                            <button class="reg-btn" @onclick="RegisterAndSubmitScore" disabled="@_registering">
+                                @(_registering ? "..." : "CLAIM")
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_registerError))
+                        {
+                            <div class="reg-error">@_registerError</div>
+                        }
                     </div>
-                    @if (!string.IsNullOrEmpty(_registerError))
-                    {
-                        <div class="reg-error">@_registerError</div>
-                    }
-                </div>
+                }
+                else
+                {
+                    <div class="registration-panel">
+                        <div class="reg-title">Name '@_usernameInput' is taken. Enter Recovery Code:</div>
+                        <div class="reg-form">
+                            <input class="reg-input" placeholder="Code (e.g. XYZ123)" @bind="_recoveryInput" @bind:event="oninput" maxlength="6" disabled="@_registering" />
+                            <button class="reg-btn" @onclick="SubmitRecoveryCodeAndRegister" disabled="@_registering">
+                                @(_registering ? "..." : "VERIFY")
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_registerError))
+                        {
+                            <div class="reg-error">@_registerError</div>
+                        }
+                        <button class="tab-btn" style="margin-top: 4px; padding: 4px 8px; pointer-events: auto;" @onclick="CancelRecovery">Choose other name</button>
+                    </div>
+                }
             }
             else if (!string.IsNullOrEmpty(_username) && _gameOverLatched)
             {
-                <div class="reg-welcome">Playing as: <span class="reg-username">@_username</span></div>
+                <div class="reg-welcome">
+                    Playing as: <span class="reg-username">@_username</span>
+                    @if (!string.IsNullOrEmpty(_savedRecoveryCode))
+                    {
+                        <div style="font-size: 10px; color: rgba(110, 220, 255, 0.4); margin-top: 2px;">
+                            Recovery Code: <span style="color: rgba(110, 220, 255, 0.7); font-weight: bold;">@_savedRecoveryCode</span> (save to link other tabs/browsers)
+                        </div>
+                    }
+                </div>
             }
         }
     };
@@ -270,6 +301,7 @@
 
         _registerError = "";
         _registering = true;
+        _showRecoveryInput = false;
         StateHasChanged();
 
         try
@@ -278,7 +310,64 @@
             if (regResult.Success)
             {
                 _username = regResult.CleanedName;
+                _savedRecoveryCode = regResult.RecoveryCode;
                 await HighScores.SaveUsernameAsync(_username);
+                await HighScores.SaveRecoveryCodeAsync(_savedRecoveryCode);
+                
+                if (_lastRunScore > 0 && !_scoreSubmitted)
+                {
+                    var success = await HighScores.SubmitGlobalScoreAsync(_username, _lastRunScore, _lastRunTime);
+                    if (success)
+                    {
+                        _scoreSubmitted = true;
+                    }
+                }
+                
+                _ = LoadGlobalLeaderboardAsync();
+            }
+            else
+            {
+                if (regResult.CodeRequired)
+                {
+                    _showRecoveryInput = true;
+                    _recoveryInput = "";
+                }
+                _registerError = regResult.ErrorMessage;
+            }
+        }
+        catch (Exception ex)
+        {
+            _registerError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _registering = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SubmitRecoveryCodeAndRegister()
+    {
+        if (string.IsNullOrWhiteSpace(_recoveryInput))
+        {
+            _registerError = "Recovery code cannot be empty.";
+            return;
+        }
+
+        _registerError = "";
+        _registering = true;
+        StateHasChanged();
+
+        try
+        {
+            var regResult = await HighScores.RegisterUsernameAsync(_usernameInput, _recoveryInput);
+            if (regResult.Success)
+            {
+                _username = regResult.CleanedName;
+                _savedRecoveryCode = regResult.RecoveryCode;
+                _showRecoveryInput = false;
+                await HighScores.SaveUsernameAsync(_username);
+                await HighScores.SaveRecoveryCodeAsync(_savedRecoveryCode);
                 
                 if (_lastRunScore > 0 && !_scoreSubmitted)
                 {
@@ -305,6 +394,14 @@
             _registering = false;
             StateHasChanged();
         }
+    }
+
+    private void CancelRecovery()
+    {
+        _showRecoveryInput = false;
+        _registerError = "";
+        _usernameInput = "";
+        StateHasChanged();
     }
 
     private void RefreshBestTime() =>
@@ -375,6 +472,7 @@
 
         _username = await HighScores.GetSavedUsernameAsync() ?? "";
         _usernameInput = _username;
+        _savedRecoveryCode = await HighScores.GetSavedRecoveryCodeAsync() ?? "";
         _ = LoadGlobalLeaderboardAsync();
 
         _engine.OnScoreRecorded = (score, time) => _pendingScores.Add(new HighScoreEntry { Score = score, SurvivalTime = time });
