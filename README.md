@@ -400,7 +400,7 @@ Then open **Actions** on GitHub and confirm the workflow is green. The live site
 https://<defaultHostname from az staticwebapp show>
 ```
 
-Example (this deployment): `https://gray-ocean-0fb38d103.7.azurestaticapps.net`
+Example (this deployment): `https://ashy-sand-0ff80b503.7.azurestaticapps.net`
 
 ### Troubleshooting
 
