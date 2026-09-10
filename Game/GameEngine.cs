@@ -379,9 +379,10 @@ public class GameEngine
                     _lastAsteroidPos = new Point(a.X, a.Y);
                     result.Sounds.Add(SoundEffect.Explosion);
                     result.ExplosionRadius = a.Radius;
-                    EmitVisual(result, "asteroid", a.X, a.Y, a.Radius, Math.Atan2(p.VelocityY, p.VelocityX));
+                    var explosionRadius = a.Radius * GameMath.ExplosionSizeMultiplier(a.Radius);
+                    EmitVisual(result, "asteroid", a.X, a.Y, explosionRadius, Math.Atan2(p.VelocityY, p.VelocityX));
                     result.ScreenShake = Math.Max(result.ScreenShake, Math.Min(14, a.Radius * 0.35));
-                    SpawnExplosion(a.X, a.Y, a.Radius);
+                    SpawnExplosion(a.X, a.Y, explosionRadius);
                     _scoreInternal += GameMath.GetAsteroidPoints(a.Radius);
                     State.Score = _scoreInternal;
 

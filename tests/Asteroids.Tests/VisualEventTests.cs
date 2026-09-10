@@ -73,4 +73,25 @@ public class VisualEventTests
         Assert.Equal(player.X, effect.X);
         Assert.Equal((double)PowerUpType.TripleShot, effect.Direction);
     }
+
+    [Theory]
+    [InlineData(40, 56)]  // large: 40% bigger
+    [InlineData(25, 30)]  // medium: 20% bigger
+    [InlineData(15, 15)]  // small: unchanged
+    public void AsteroidDestructionEventScalesExplosionBySize(double radius, double expectedScale)
+    {
+        var engine = new GameEngine();
+        engine.Initialize(1100, 800);
+        var rocks = Items<Asteroid>(engine, "_asteroids");
+        rocks.Clear();
+        rocks.Add(new Asteroid { Id = 1, X = 200, Y = 200, Radius = radius });
+        var shots = Items<Projectile>(engine, "_projectiles");
+        shots.Add(new Projectile { X = 200, Y = 200, Lifetime = 1, VelocityX = 100 });
+        var frame = engine.Update(0, new InputState());
+        var effect = Assert.Single(frame.VisualEvents);
+        Assert.Equal("asteroid", effect.Type);
+        Assert.Equal(expectedScale, effect.Scale);
+        // The unscaled radius still drives the explosion sound parameter.
+        Assert.Equal(radius, frame.ExplosionRadius);
+    }
 }

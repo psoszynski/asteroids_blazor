@@ -177,6 +177,18 @@ public static class GameMath
         return GameConstants.SmallAsteroidPoints;
     }
 
+    /// <summary>
+    /// Scales the destruction-explosion visuals by asteroid size: large asteroids
+    /// explode 40% bigger, medium 20% bigger, and small asteroids are unchanged.
+    /// This only affects explosion visuals, not collision radius or scoring.
+    /// </summary>
+    public static double ExplosionSizeMultiplier(double radius)
+    {
+        if (radius >= GameConstants.MaxAsteroidSize) return 1.4;
+        if (radius >= GameConstants.AsteroidSizes[1]) return 1.2;
+        return 1.0;
+    }
+
     public static string FormatTime(double seconds)
     {
         var mins = (int)Math.Floor(seconds / 60);

@@ -85,4 +85,13 @@ public class GameMathTests
         Assert.Equal(wave.Count, wave.Select(a => a.Id).Distinct().Count());
         Assert.Equal(Enumerable.Range(1, wave.Count), wave.Select(a => a.Id));
     }
+
+    [Theory]
+    [InlineData(40, 1.4)]
+    [InlineData(25, 1.2)]
+    [InlineData(15, 1.0)]
+    public void ExplosionSizeMultiplier_ScalesByAsteroidSize(double radius, double expected)
+    {
+        Assert.Equal(expected, GameMath.ExplosionSizeMultiplier(radius));
+    }
 }
