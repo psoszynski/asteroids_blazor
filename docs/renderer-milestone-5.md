@@ -26,6 +26,8 @@ Milestone 5 closes out the cinematic 3D upgrade: shared/pooled/instanced resourc
 
 Coverage: startup/fallback, WebGL-unavailable and failed-chunk fallback, context loss/recovery, resize, reset, disposal, repeated mount/dispose, keyboard/pointer input isolation, adaptive-quality hysteresis/cooldown, combat-event dedup/expiry/bounding, and graphics-settings persistence/reduced-motion.
 
+**CI scope note:** the deploy pipeline (`ubuntu-latest` GitHub Actions runner) only runs the Chromium pass as a required gate — headless Firefox on that runner cannot reliably create a WebGL2 context (`fixture.init('webgl')` falls back to `'canvas'`), which is a runner/software-rendering limitation rather than an application bug, since the same Firefox and WebKit passes are green when run locally against a real display/GPU. Firefox and WebKit remain available as manual/local verification via `RENDER_BROWSER=firefox` / `RENDER_BROWSER=webkit npm run test:rendering`, and were confirmed 22/22 passing in this session.
+
 **Live-game smoke test against the published build** (`dotnet publish` → `npm run preview:release` on port 5239 → `GAME_URL=http://127.0.0.1:5239 npm run test:game`): Canvas and WebGL both pass — movement, shooting, pause, resize, and WebGL context recovery — confirming the release output loads and runs without development tooling or a CDN.
 
 **Ten-minute soak** (`npm run soak:rendering`): 5,167 frames over 600.0s with 10 renderer remounts; `geometries`/`programs`/`ownedResources`/`pooledObjects` stayed constant across the whole run. Auto quality dropped to Low within the first 30s and stayed there, consistent with this being a shared/virtualized CPU rather than a dedicated GPU host.

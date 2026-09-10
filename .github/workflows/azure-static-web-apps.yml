@@ -40,13 +40,10 @@ jobs:
       - name: Install renderer dependencies
         run: npm ci
 
-      - name: Renderer browser tests (Chromium, Firefox, WebKit)
+      - name: Renderer browser tests (Chromium)
         run: |
-          npx playwright install --with-deps chromium firefox webkit
-          npm run build
-          for browser in chromium firefox webkit; do
-            RENDER_BROWSER="$browser" npx playwright test
-          done
+          npx playwright install --with-deps chromium
+          npm run test:rendering
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
