@@ -21,7 +21,9 @@ async function startLoop(page, kind = 'canvas', delay = 0) {
         }};
         await gameLoop.start(document.getElementById('host'), ref);
     }, delay);
-    await expect.poll(() => page.evaluate(() => frameCount)).toBeGreaterThan(1);
+    // WebGL cold start (chunk parse, shader compile) can be slow on CI runners
+    // without hardware acceleration; give it more room than the default 5s poll.
+    await expect.poll(() => page.evaluate(() => frameCount), { timeout: 20000 }).toBeGreaterThan(1);
 }
 
 for (const kind of ['canvas', 'webgl']) {
