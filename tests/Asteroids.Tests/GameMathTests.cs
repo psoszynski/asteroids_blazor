@@ -60,4 +60,29 @@ public class GameMathTests
         Assert.Equal("—", GameMath.FormatPlayedAt(""));
         Assert.Equal("—", GameMath.FormatPlayedAt("not-a-date"));
     }
+
+    [Fact]
+    public void HashSeed_IsDeterministicAndNonNegative()
+    {
+        Assert.Equal(GameMath.HashSeed(42), GameMath.HashSeed(42));
+        Assert.NotEqual(GameMath.HashSeed(1), GameMath.HashSeed(2));
+        for (var id = 0; id < 500; id++) Assert.True(GameMath.HashSeed(id) >= 0);
+    }
+
+    [Fact]
+    public void CreateAsteroid_AssignsIdAndMatchingVisualSeed()
+    {
+        var asteroid = GameMath.CreateAsteroid(0, 0, 40, id: 7, new Random(1));
+        Assert.Equal(7, asteroid.Id);
+        Assert.Equal(GameMath.HashSeed(7), asteroid.VisualSeed);
+    }
+
+    [Fact]
+    public void SpawnWave_AssignsUniqueSequentialIds()
+    {
+        var nextId = 1;
+        var wave = GameMath.SpawnWave(1, 1000, 800, new Random(1), () => nextId++);
+        Assert.Equal(wave.Count, wave.Select(a => a.Id).Distinct().Count());
+        Assert.Equal(Enumerable.Range(1, wave.Count), wave.Select(a => a.Id));
+    }
 }

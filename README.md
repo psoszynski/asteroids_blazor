@@ -1,12 +1,12 @@
 # 🚀 Asteroids — Blazor WebAssembly
 
-A modern, high-fidelity 2D arcade space shooter built with **Blazor WebAssembly (.NET 10, C# 14)** and the **HTML5 Canvas API**. This project implements a high-performance hybrid architecture combining C# game engine logic with procedural JavaScript rendering and Web Audio API sound synthesis.
+A modern, high-fidelity 2D arcade space shooter built with **Blazor WebAssembly (.NET 10, C# 14)** and interchangeable **Canvas 2D / Three.js WebGL renderers**. This project implements a high-performance hybrid architecture combining C# game engine logic with procedural JavaScript rendering and Web Audio API sound synthesis.
 
 ---
 
 ## 🌟 Key Features
 
-*   **Smooth 60 FPS Rendering:** Driven by a native JavaScript `requestAnimationFrame` loop rendering directly to HTML5 Canvas with neon glow styling, dynamic starfields, and particle explosions.
+*   **Browser-driven Rendering:** A JavaScript `requestAnimationFrame` loop drives shaded Canvas 2D visuals or the opt-in Three.js preview, with dynamic stars and particles.
 *   **Hybrid C#/JS Architecture:** Core game physics, state management, entity tracking, and wave mechanics are written in **C# 14**, while input handling, canvas rendering, and procedural audio run in **JavaScript**.
 *   **Power-Ups System:**
     *   🛡️ **Shield:** Permanent protection until hit. Absorbs one collision with an asteroid, triggers an explosion, and grants temporary invulnerability.
@@ -14,7 +14,7 @@ A modern, high-fidelity 2D arcade space shooter built with **Blazor WebAssembly 
     *   🔱 **Triple Shot:** Spreads shots in a three-way arc (lasts `8` seconds).
 *   **Leaderboard & Persistence:** Top scores are saved locally in the browser's `localStorage` and displayed as `Score (Survival Time)` (e.g., `12,500 (01:23)`), sorted automatically with the highest score on top.
 *   **Mobile-Friendly:** Includes desktop keyboard mappings and a responsive mobile touch-control overlay (Thrust, Rotate Left/Right, Fire).
-*   **Dynamic Visuals:** Screen shake on player hits/explosions, particle fireworks on wave completion, and retro scanline visual overlays.
+*   **Dynamic Visuals:** Screen shake on player hits/explosions, particle fireworks on wave completion, and shaded pseudo-3D objects. An opt-in WebGL foundation is available for the upcoming 3D models.
 
 ---
 
@@ -56,6 +56,7 @@ When loaded on mobile devices, interactive touch zones are displayed at the bott
 ## 🛠️ Build & Run Locally
 
 ### Prerequisites
+*   Node.js 22+ and npm (renderer asset build)
 *   [.NET 10.0 SDK](https://dotnet.microsoft.com/download) (for the Blazor app)
 *   [.NET 8.0 SDK](https://dotnet.microsoft.com/download) (for the API backend)
 *   [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) (for local API hosting)
@@ -82,6 +83,7 @@ To run both the Blazor client and the Azure Functions API locally with proper pr
 3. **Start the Blazor client:**
    In another terminal:
    ```bash
+   npm ci
    dotnet watch
    # This starts the app on http://localhost:5000 / https://localhost:5001
    ```
@@ -95,19 +97,42 @@ To run both the Blazor client and the Azure Functions API locally with proper pr
 ### Run client only (offline mode)
 If you just want to run the client-side game without the API:
 ```bash
-dotnet run
+npm ci
+npm run dev
 ```
 And open the hosting address (e.g. `http://localhost:5000`).
 
 ### Build for Production
 To generate a compiled bundle optimized for static hosting:
 ```bash
-# Publish the client WASM
+# Install renderer dependencies, then publish the client WASM
+npm ci
 dotnet publish -c Release -o ./publish
 # Copy staticwebapp config to output
 cp staticwebapp.config.json ./publish/wwwroot/staticwebapp.config.json
 ```
 *(The API will be built automatically from `/api` by the Azure SWA deployment action on git push).*
+
+### Renderer development (milestone 5)
+
+The default remains the current polished Canvas 2D renderer. Append `?renderer=webgl` to the game URL to use the Three.js renderer, now with detailed procedural ship/asteroid models, per-rock material variants, and a lit environment. Combat now includes impact flashes, shockwaves, sparks, debris, dust, shield ripples, engine lighting, and tapered projectile trails. The scene now includes dim nebulae, distant planets, star parallax, bloom, and a vignette. The pause menu provides Auto/High/Low graphics and reduced effects. Auto now adapts to sustained frame intervals with a cooldown between changes. See [milestone 5 validation](docs/renderer-milestone-5.md) for measurements and coverage. Append `&collisions` on localhost to show collision boundaries.
+
+`dotnet build`, `dotnet run`, and `dotnet publish` automatically run the renderer asset build after `npm ci`. Bundles are served locally from `wwwroot/js/dist`; generated files are ignored by Git. The large Three.js chunk loads only when WebGL is selected. If WebGL or its chunk is unavailable, the game uses a fresh Canvas 2D surface. Graphics context loss holds the game clock and offers a button to continue with compatible graphics, preserving an existing pause.
+
+```bash
+npx playwright install chromium firefox webkit
+npm run test:rendering       # Deterministic fixtures and renderer/loop lifecycle tests
+npm run preview:rendering    # http://127.0.0.1:4179; add ?renderer=webgl&dense&collisions
+npm run capture:rendering    # Screenshots and frame timing under artifacts/rendering
+npm run test:game            # Smoke test against a running app at http://127.0.0.1:5227
+RENDER_BROWSER=firefox npm run test:rendering # Also supports webkit
+npm run soak:rendering       # Ten-minute dense fixture + 10 remounts
+dotnet publish -c Release -o artifacts/publish
+npm run preview:release     # Serve published files at http://127.0.0.1:5239
+npm run measure:game        # Real game frame intervals and interop timing against port 5239
+```
+
+Set `GAME_URL` for a different app server. The capture script can also compare a saved pre-extraction `game.js` via `BASELINE_SOURCE=/absolute/path/game.js`. Fixture timing includes browser frame intervals and draw submission separately; it does not measure C# simulation. The live-game measurement script uses localhost-only `&profile` instrumentation to include C# interop in whole-frame intervals. Generated metrics and screenshots stay under `artifacts/rendering`. See [milestone 1 validation](docs/renderer-milestone-1.md), [milestone 2 validation](docs/renderer-milestone-2.md), and the [full visual plan](VISUAL_UPGRADE_PLAN.md).
 
 ### Run unit tests
 ```bash

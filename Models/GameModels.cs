@@ -22,6 +22,10 @@ public class Projectile
 
 public class Asteroid
 {
+    /// <summary>Stable per-run identity so renderers can keep a rock's mesh/material across frames.</summary>
+    public int Id { get; set; }
+    /// <summary>Deterministic hash of <see cref="Id"/> used to pick visual mesh/material variants; independent of the gameplay random stream so rendering choices never perturb physics.</summary>
+    public int VisualSeed { get; set; }
     public double X { get; set; }
     public double Y { get; set; }
     public double VelocityX { get; set; }
@@ -114,8 +118,12 @@ public enum SoundEffect
     FireworkCrackle
 }
 
+public record VisualEvent(int Id, int RunId, string Type, double X, double Y, double Scale, double Direction);
+
 public class FrameResult
 {
+    public List<VisualEvent> VisualEvents { get; set; } = [];
+    public int RunId { get; set; }
     public Player Player { get; set; } = new();
     public List<Asteroid> Asteroids { get; set; } = [];
     public List<Projectile> Projectiles { get; set; } = [];

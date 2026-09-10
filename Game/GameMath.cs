@@ -68,10 +68,22 @@ public static class GameMath
         return points;
     }
 
+    /// <summary>Deterministic integer hash (splitmix32) turning a stable entity ID into a visual seed
+    /// without touching the gameplay <see cref="Random"/> stream.</summary>
+    public static int HashSeed(int id)
+    {
+        var z = unchecked((uint)id + 0x9E3779B9);
+        z = unchecked((z ^ (z >> 16)) * 0x85EBCA6Bu);
+        z = unchecked((z ^ (z >> 13)) * 0xC2B2AE35u);
+        z ^= z >> 16;
+        return unchecked((int)(z & 0x7FFFFFFF));
+    }
+
     public static Asteroid CreateAsteroid(
         double x,
         double y,
         double radius,
+        int id,
         Random random,
         double? minSpeed = null,
         double? maxSpeed = null)
@@ -79,6 +91,8 @@ public static class GameMath
         var (vx, vy) = RandomVelocity(random, minSpeed, maxSpeed);
         return new Asteroid
         {
+            Id = id,
+            VisualSeed = HashSeed(id),
             X = x,
             Y = y,
             VelocityX = vx,
@@ -91,15 +105,15 @@ public static class GameMath
         };
     }
 
-    public static List<Asteroid> SpawnLargeAsteroids(int count, double width, double height, Random random)
+    public static List<Asteroid> SpawnLargeAsteroids(int count, double width, double height, Random random, Func<int> nextId)
     {
         return Enumerable.Range(0, count)
             .Select(_ => CreateAsteroid(random.NextDouble() * width, random.NextDouble() * height,
-                GameConstants.MaxAsteroidSize, random))
+                GameConstants.MaxAsteroidSize, nextId(), random))
             .ToList();
     }
 
-    public static List<Asteroid> SpawnWave(int level, double width, double height, Random random)
+    public static List<Asteroid> SpawnWave(int level, double width, double height, Random random, Func<int> nextId)
     {
         var count = GetWaveAsteroidCount(level);
         var (minSpeed, maxSpeed) = GetWaveSpeedRange(level);
@@ -109,6 +123,7 @@ public static class GameMath
                 random.NextDouble() * width,
                 random.NextDouble() * height,
                 GameConstants.MaxAsteroidSize,
+                nextId(),
                 random,
                 minSpeed,
                 maxSpeed))

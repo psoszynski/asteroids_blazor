@@ -61,6 +61,19 @@
             <div class="overlay-pause" @onclick="OnPauseToggle">
                 <div class="pause-title">PAUSED</div>
                 <div class="pause-hint">Tap here or press P to resume</div>
+                <div class="graphics-settings" @onclick:stopPropagation="true">
+                    <label for="graphics-quality">Graphics quality</label>
+                    <select id="graphics-quality" value="@_graphics.Quality" @onchange="OnGraphicsQualityChanged">
+                        <option value="auto">Auto</option>
+                        <option value="high">High</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <label class="reduced-effects" for="reduced-effects">
+                        <input id="reduced-effects" type="checkbox" checked="@_graphics.ReducedEffects" @onchange="OnReducedEffectsChanged" />
+                        Reduced effects
+                    </label>
+                    <span class="graphics-hint">Less flashing and decorative motion</span>
+                </div>
                 
                 <div class="leaderboard-panel">
                     <div class="leaderboard-title">🏆 LEADERBOARD</div>
@@ -98,7 +111,7 @@
         }
     </div>
 
-    <canvas @ref="_canvasRef" class="game-canvas"></canvas>
+    <div @ref="_rendererHost" class="game-renderer-host"></div>
 
     <div class="touch-zones-container">
         <div class="touch-zone zone-rotate-left" id="touch-left">
@@ -121,7 +134,23 @@
 </div>
 
 @code {
-    private ElementReference _canvasRef;
+    private sealed class GraphicsSettings
+    {
+        public string Quality { get; set; } = "auto";
+        public bool ReducedEffects { get; set; }
+    }
+    private GraphicsSettings _graphics = new();
+    private async Task OnGraphicsQualityChanged(ChangeEventArgs args)
+    {
+        _graphics.Quality = args.Value?.ToString() ?? "auto";
+        await JS.InvokeVoidAsync("gameLoop.setGraphics", _graphics);
+    }
+    private async Task OnReducedEffectsChanged(ChangeEventArgs args)
+    {
+        _graphics.ReducedEffects = args.Value is true;
+        await JS.InvokeVoidAsync("gameLoop.setGraphics", _graphics);
+    }
+    private ElementReference _rendererHost;
     private DotNetObjectReference<Game>? _dotNetRef;
     private readonly GameEngine _engine = new();
     private GameState _gameState = CreateInitialGameState();
@@ -483,7 +512,8 @@
         var height = await JS.InvokeAsync<int>("gameLoop.getViewportHeight");
         _engine.Initialize(width, height);
 
-        await JS.InvokeVoidAsync("gameLoop.start", _canvasRef, _dotNetRef);
+        await JS.InvokeVoidAsync("gameLoop.start", _rendererHost, _dotNetRef);
+        _graphics = await JS.InvokeAsync<GraphicsSettings>("gameLoop.getGraphics") ?? new();
 
         _hudTimer = new System.Threading.Timer(_ =>
         {
@@ -495,6 +525,9 @@
             });
         }, null, 100, 100);
     }
+
+    [JSInvokable]
+    public void SetRendererSuspended(bool suspended) => _engine.SetRendererSuspended(suspended);
 
     [JSInvokable]
     public void OnResize(int width, int height)

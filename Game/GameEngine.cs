@@ -5,6 +5,27 @@ namespace Asteroids.Game;
 public class GameEngine
 {
     private readonly Random _random = new();
+    private readonly TimeProvider _timeProvider;
+    private long? _rendererSuspendedAt;
+    private long _rendererFrozenMs;
+    private int _runId;
+    private int _nextAsteroidId;
+    private int _nextVisualEventId;
+
+    public GameEngine(TimeProvider? timeProvider = null) => _timeProvider = timeProvider ?? TimeProvider.System;
+
+    // Freeze the engine clock as well as frame updates during graphics recovery.
+    // This preserves wave deadlines, invulnerability, and an existing user pause.
+    public void SetRendererSuspended(bool suspended)
+    {
+        var now = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        if (suspended) _rendererSuspendedAt ??= now;
+        else if (_rendererSuspendedAt is long started)
+        {
+            _rendererFrozenMs += now - started;
+            _rendererSuspendedAt = null;
+        }
+    }
 
     private Player _player = new();
     private readonly List<Projectile> _projectiles = [];
@@ -93,6 +114,8 @@ public class GameEngine
 
     private void StartNewRun()
     {
+        _runId++;
+        _nextVisualEventId = 0;
         _player = new Player
         {
             X = _canvasWidth / 2.0,
@@ -108,6 +131,7 @@ public class GameEngine
         _explosions.Clear();
         _powerUps.Clear();
         _lastAsteroidPos = null;
+        _nextAsteroidId = 1;
         _spacePressed = false;
         _invulnerableUntil = 0;
         _startTime = NowMs();
@@ -126,7 +150,7 @@ public class GameEngine
         _scoreRecordedForRun = false;
         ClearActivePowerUps();
 
-        _asteroids.AddRange(GameMath.SpawnWave(_currentLevel, _canvasWidth, _canvasHeight, _random));
+        _asteroids.AddRange(GameMath.SpawnWave(_currentLevel, _canvasWidth, _canvasHeight, _random, () => _nextAsteroidId++));
 
         State.Lives = GameConstants.InitialLives;
         State.ElapsedTime = 0;
@@ -163,12 +187,28 @@ public class GameEngine
     {
         var result = new FrameResult
         {
+            RunId = _runId,
             CanvasWidth = _canvasWidth,
             CanvasHeight = _canvasHeight,
             Stars = _stars,
             IsGameOver = _isGameOver,
             IsPaused = _isPaused
         };
+
+        if (_rendererSuspendedAt.HasValue)
+        {
+            result.Player = _player;
+            result.Asteroids = [.._asteroids];
+            result.Projectiles = [.._projectiles];
+            result.PowerUps = [.._powerUps];
+            result.Explosions = [.._explosions];
+            result.Fireworks = [.._fireworks];
+            result.DrawPlayer = !_isGameOver;
+            result.Invulnerable = IsInvulnerable();
+            PopulatePowerUpDisplay(result);
+            result.HudState = BuildHudState();
+            return result;
+        }
 
         var dt = ToSec(deltaMs);
 
@@ -339,6 +379,7 @@ public class GameEngine
                     _lastAsteroidPos = new Point(a.X, a.Y);
                     result.Sounds.Add(SoundEffect.Explosion);
                     result.ExplosionRadius = a.Radius;
+                    EmitVisual(result, "asteroid", a.X, a.Y, a.Radius, Math.Atan2(p.VelocityY, p.VelocityX));
                     result.ScreenShake = Math.Max(result.ScreenShake, Math.Min(14, a.Radius * 0.35));
                     SpawnExplosion(a.X, a.Y, a.Radius);
                     _scoreInternal += GameMath.GetAsteroidPoints(a.Radius);
@@ -349,8 +390,8 @@ public class GameEngine
                         var newSize = a.Radius == GameConstants.MaxAsteroidSize
                             ? GameConstants.AsteroidSizes[1]
                             : GameConstants.AsteroidSizes[2];
-                        spawned.Add(GameMath.CreateAsteroid(a.X, a.Y, newSize, _random));
-                        spawned.Add(GameMath.CreateAsteroid(a.X, a.Y, newSize, _random));
+                        spawned.Add(GameMath.CreateAsteroid(a.X, a.Y, newSize, _nextAsteroidId++, _random));
+                        spawned.Add(GameMath.CreateAsteroid(a.X, a.Y, newSize, _nextAsteroidId++, _random));
                     }
 
                     TrySpawnPowerUp(a.X, a.Y);
@@ -432,7 +473,7 @@ public class GameEngine
         _waveTransitionUntil = null;
         _projectiles.Clear();
         _powerUps.Clear();
-        _asteroids.AddRange(GameMath.SpawnWave(_currentLevel, _canvasWidth, _canvasHeight, _random));
+        _asteroids.AddRange(GameMath.SpawnWave(_currentLevel, _canvasWidth, _canvasHeight, _random, () => _nextAsteroidId++));
 
         State.Level = _currentLevel;
         State.IsWaveTransition = false;
@@ -532,6 +573,7 @@ public class GameEngine
             }
 
             ActivatePowerUp(powerUp.Type);
+            EmitVisual(result, "pickup", powerUp.X, powerUp.Y, 16, (int)powerUp.Type);
             _powerUps.RemoveAt(i);
             result.ScreenShake = Math.Max(result.ScreenShake, 3);
         }
@@ -597,6 +639,7 @@ public class GameEngine
             if (_hasShield)
             {
                 _hasShield = false;
+                EmitVisual(result, "shield", _player.X, _player.Y, 24, Math.Atan2(a.Y - _player.Y, a.X - _player.X));
                 result.Sounds.Add(SoundEffect.PlayerHit);
                 result.ScreenShake = Math.Max(result.ScreenShake, 6);
                 SpawnExplosion(_player.X, _player.Y, 14);
@@ -609,6 +652,7 @@ public class GameEngine
                 result.ScreenShake = Math.Max(result.ScreenShake, 10);
                 SpawnExplosion(_player.X, _player.Y, 18);
                 _livesInternal -= 1;
+                EmitVisual(result, "damage", _player.X, _player.Y, 22, Math.Atan2(a.Y - _player.Y, a.X - _player.X));
                 State.Lives = _livesInternal;
                 _invulnerableUntil = NowMs() + (long)(GameConstants.InvulnerabilityDuration * 1000);
 
@@ -620,6 +664,13 @@ public class GameEngine
 
             return;
         }
+    }
+
+    private void EmitVisual(FrameResult result, string type, double x, double y, double scale, double direction)
+    {
+        // Bound interop payloads during unusually dense frames; visuals never change physics.
+        if (result.VisualEvents.Count < 64)
+            result.VisualEvents.Add(new(++_nextVisualEventId, _runId, type, x, y, scale, direction));
     }
 
     private void AdjustTimedEffects(long frozenMs)
@@ -728,7 +779,7 @@ public class GameEngine
 
     private bool IsInvulnerable() => NowMs() < _invulnerableUntil;
 
-    private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    private long NowMs() => (_rendererSuspendedAt ?? _timeProvider.GetUtcNow().ToUnixTimeMilliseconds()) - _rendererFrozenMs;
 
     private static double ToSec(long ms) => ms / 1000.0;
     private static double ToSec(double ms) => ms / 1000.0;

@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\Game\GameEngine.cs" Link="Linked\GameEngine.cs" />
     <Compile Include="..\..\Game\GameMath.cs" Link="Linked\GameMath.cs" />
     <Compile Include="..\..\Game\GameConstants.cs" Link="Linked\GameConstants.cs" />
     <Compile Include="..\..\Models\GameModels.cs" Link="Linked\GameModels.cs" />

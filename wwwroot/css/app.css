@@ -17,20 +17,6 @@ html, body {
     position: relative;
 }
 
-.game-container::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: repeating-linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0) 0,
-        rgba(0, 0, 0, 0) 2px,
-        rgba(0, 0, 0, 0.03) 3px
-    );
-    z-index: 5;
-}
-
 .game-canvas {
     display: block;
     width: 100%;
@@ -52,12 +38,12 @@ html, body {
 }
 
 .hud-panel {
-    background: linear-gradient(135deg, rgba(8, 18, 42, 0.72), rgba(4, 10, 24, 0.55));
+    background: linear-gradient(155deg, rgba(35, 53, 72, 0.86), rgba(7, 15, 29, 0.8) 55%);
     border: 1px solid rgba(110, 220, 255, 0.25);
     border-radius: 12px;
     padding: 14px 20px;
     backdrop-filter: blur(10px);
-    box-shadow: 0 0 24px rgba(60, 180, 255, 0.12), inset 0 0 20px rgba(110, 220, 255, 0.04);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(220, 242, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.5);
 }
 
 .hud-left,
@@ -192,6 +178,37 @@ html, body {
     color: #8ed4ff;
     letter-spacing: 0.2em;
     text-shadow: 0 0 24px rgba(142, 212, 255, 0.5);
+}
+
+.graphics-settings {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px 20px;
+    align-items: center;
+    text-align: left;
+    margin-top: 22px;
+    padding: 18px 0;
+    border-top: 1px solid rgba(120, 200, 255, 0.18);
+    border-bottom: 1px solid rgba(120, 200, 255, 0.18);
+    color: #cce6f5;
+    font-size: 14px;
+}
+.graphics-settings select {
+    color: #e3f4ff;
+    background: #102338;
+    border: 1px solid #47728b;
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+.reduced-effects { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.reduced-effects input { width: 18px; height: 18px; accent-color: #78d8ff; }
+.graphics-hint { grid-column: 1 / -1; color: #8aa7bb; font-size: 12px; }
+[data-reduced-effects="true"] .overlay-wave,
+[data-reduced-effects="true"] .wave-title,
+[data-reduced-effects="true"] .wave-subtitle { animation: none !important; transition: none !important; }
+.overlay-pause { max-height: 85dvh; overflow-y: auto; width: min(440px, 92vw); box-sizing: border-box; }
+@media (prefers-reduced-motion: reduce) {
+    .overlay-wave, .wave-title, .wave-subtitle { animation: none !important; transition: none !important; }
 }
 
 .pause-hint {
@@ -847,4 +864,35 @@ h1:focus {
 .loading-spinner {
     color: rgba(110, 220, 255, 0.6);
     font-style: italic;
+}
+.game-renderer-host {
+    position: absolute;
+    inset: 0;
+}
+
+.graphics-recovery {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 24px;
+    background: rgba(3, 8, 20, 0.94);
+    color: #dff8ff;
+    text-align: center;
+}
+
+/* Above sibling HUD/touch controls only during recovery. */
+.game-renderer-host:has(.graphics-recovery) { z-index: 40; }
+
+.graphics-recovery button {
+    padding: 12px 18px;
+    border: 1px solid #7ef9ff;
+    border-radius: 8px;
+    background: #172e42;
+    color: #e8fdff;
+    cursor: pointer;
 }
