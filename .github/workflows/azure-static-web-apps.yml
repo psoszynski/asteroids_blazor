@@ -31,6 +31,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install renderer dependencies
+        run: npm ci
+
+      - name: Renderer browser tests (Chromium, Firefox, WebKit)
+        run: |
+          npx playwright install --with-deps chromium firefox webkit
+          npm run build
+          for browser in chromium firefox webkit; do
+            RENDER_BROWSER="$browser" npx playwright test
+          done
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:

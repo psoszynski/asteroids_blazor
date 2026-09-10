@@ -1,0 +1,18 @@
+{
+  "name": "asteroids-rendering",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-rendering.mjs",
+    "dev": "dotnet run",
+    "test:rendering": "npm run build && playwright test",
+    "capture:rendering": "npm run build && node scripts/capture-rendering.mjs",
+    "test:game": "node scripts/smoke-game.mjs",
+    "soak:rendering": "npm run build && node scripts/soak-rendering.mjs",
+    "measure:game": "node scripts/measure-game.mjs",
+    "preview:release": "node scripts/serve-published.mjs",
+    "preview:rendering": "npm run build && node scripts/rendering-server.mjs"
+  },
+  "dependencies": { "three": "0.186.0" },
+  "devDependencies": { "esbuild": "0.28.2", "@playwright/test": "1.63.0" }
+}

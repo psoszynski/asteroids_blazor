@@ -2,6 +2,28 @@
 
 This document describes the technical architecture of the Blazor WebAssembly Asteroids game (sibling project: `../asteroids01`).
 
+## Renderer foundation (milestone 1) and detailed models (milestone 2)
+
+The renderer is now an asynchronous dependency of `gameLoop`. `Pages/Game.razor` owns a host element; each renderer owns a fresh canvas inside it. `wwwroot/js/rendering/renderer-host.js` implements selection, startup fallback, reset by `FrameResult.RunId`, optional localhost collision overlay, and disposal. Canvas 2D remains the default; `?renderer=webgl` selects the Three.js renderer.
+
+Both backends expose `init(canvas)`, `render(frame, deltaMs)`, `resize(viewport)`, `reset()`, and `dispose()`. The Three.js camera maps screen `(x, y)` to world `(x, -y)` and negates screen rotation. Mobile virtual dimensions remain independent of backing pixel resolution.
+
+`Asteroid.Id` is a stable per-run identity assigned by `GameEngine` (never reused within a run); `Asteroid.VisualSeed` is a deterministic hash of that ID (`GameMath.HashSeed`, splitmix32) so mesh/material/tumble-axis selection never consumes the gameplay `Random` stream. `three-renderer.js` keys its asteroid mesh pool by `id` instead of array position, so a rock keeps the same procedurally-built mesh and material across frames regardless of how the underlying list reorders; other short-lived entities (lasers, pickups, stars, particles) keep the milestone 1 positional pooling since they have no stable identity. Asteroid meshes come from a small library of 10 displaced-icosahedron variants (broad lobed facets plus a few recessed craters, normalized so the top-down silhouette matches the existing collision radius) crossed with 4 mineral material tints; each rock also gets a fixed per-seed body tilt so its spin reveals changing facets instead of rotating flat. The ship is a grouped model (beveled/extruded hull, angled wing blades, a dark recessed underside, a glass-like cockpit dome, an emissive engine nozzle/flame, and blinking red/green navigation lights) that banks (rolls around its own forward axis) proportional to turn rate, computed from frame-to-frame yaw and applied via quaternion composition (roll in the body frame, then yaw) rather than mutating the shared Euler `.rotation` property. Lighting uses a key + fill directional pair plus a baked `RoomEnvironment` PMREM environment map so metal hulls and rock surfaces reflect differently.
+
+Every loop session owns an AbortController, one scheduled animation callback, and at most one pending simulation call. Teardown invalidates the session before draining outstanding calls, preventing stale frames from reaching a replacement renderer or a disposed .NET reference. Slow score/leaderboard side effects use a separate promise chain. Input releases, focus loss, and pointer cancellation clear held controls.
+
+On WebGL context loss, the loop stops updates, serializes a `SetRendererSuspended(true)` call after the pending frame, and offers Canvas recovery. The engine freezes its clock separately from user pause, preserving all timed state. Recovery resumes the same run without changing the user's pause state. Startup also holds the clock while renderer code loads.
+
+Pinned npm dependencies and esbuild generate a small entry bundle plus a lazy Three.js chunk. The .NET build target runs this before static assets are discovered, and CI installs dependencies and runs browser tests. No runtime CDN is needed. `tests/rendering` contains a deterministic fixture (including per-asteroid `id`/`visualSeed`) and browser tests; `scripts/capture-rendering.mjs` records comparison images/timings. See [milestone 1 validation](docs/renderer-milestone-1.md) and [milestone 2 validation](docs/renderer-milestone-2.md).
+
+`FrameResult.VisualEvents` carries bounded per-impact records to `combat-effects.js`. Its `EffectState` consumes ordered event IDs once per run and manages pause-aware lifetimes. Fixed burst slots and instanced debris/sparks/dust bound decorative resources, while four temporary impact lights and one engine light illuminate surfaces. See [milestone 3 validation](docs/renderer-milestone-3.md) for limits and timing behavior.
+
+`atmosphere.js` supplies procedural background shading and continuous velocity-based parallax. The WebGL composer applies bloom, vignette, and explicit tone/output conversion before presenting the scene beneath the Blazor HUD. `graphics-settings.js` validates and persists quality/reduced-effects preferences; the renderer host applies them across initialization, resize, and fallback. The pause menu updates settings through `gameLoop`. See [milestone 4 validation](docs/renderer-milestone-4.md).
+
+`adaptive-quality.js` observes complete game-frame intervals (including interop), with two-second windows, asymmetric thresholds, and a thirty-second change cooldown. Auto changes backing resolution, half-resolution bloom, and decorative density/light limits without changing simulation rules. Stars and lingering projectile traces use shared instanced meshes. The PMREM render target is owned and disposed as a target, not just as a texture. Local `&profile` telemetry retains at most 1,200 frame records; renderer diagnostics expose resource counts for the soak harness.
+
+The sections below describe the gameplay architecture; Canvas rendering details are now implemented in `wwwroot/js/rendering/canvas-renderer.js`.
+
 ## 1. High-Level System Overview
 
 The application is a browser-based 2D arcade game built with **Blazor WebAssembly (.NET 10, C# 14)** and the **HTML5 Canvas API**. It uses a **hybrid C#/JavaScript architecture**:
@@ -32,10 +54,10 @@ graph TD
     subgraph JS_Runtime [JavaScript Runtime]
         Loop[gameLoop] -->|requestAnimationFrame| Bridge
         Loop --> Input[Keyboard Listeners]
-        Loop --> Renderer[gameRenderer]
+        Loop --> Renderer[Renderer host]
         Loop --> Audio[gameSound]
         Loop --> Storage[gameStorage]
-        Renderer --> Canvas[HTML5 Canvas 2D]
+        Renderer --> Canvas[Canvas 2D or Three.js WebGL]
     end
 
     Bridge -->|FrameResult JSON| Renderer
@@ -52,11 +74,11 @@ graph TD
 | **Runtime** | .NET 10 WebAssembly | Runs C# in the browser |
 | **UI Framework** | Blazor WebAssembly | Component model, routing, HUD |
 | **Language** | C# 14 | Game engine, types, services |
-| **Rendering** | HTML5 Canvas 2D (JavaScript) | 60 FPS drawing with glow, particles, screen shake |
+| **Rendering** | Canvas 2D / Three.js WebGL (JavaScript) | Interchangeable renderers driven by browser animation frames |
 | **Interop** | `IJSRuntime` + `[JSInvokable]` | Bidirectional C# ↔ JS communication |
 | **Audio** | Web Audio API (JavaScript) | Procedural thrust, shoot, explosion, firework sounds |
 | **Persistence** | `localStorage` (JavaScript) | Top 10 best survival times |
-| **Styling** | CSS (`wwwroot/css/app.css`) | Glass-style HUD, overlays, scanline effect |
+| **Styling** | CSS (`wwwroot/css/app.css`) | HUD panels, overlays, graphics recovery |
 
 ---
 
@@ -123,7 +145,7 @@ sequenceDiagram
     participant JS as gameLoop (JS)
     participant CSharp as Game.razor (C#)
     participant Engine as GameEngine
-    participant Canvas as gameRenderer
+    participant Canvas as Active renderer
 
     Browser->>JS: animation frame (time)
     JS->>CSharp: OnFrame(deltaMs, input)
@@ -271,7 +293,7 @@ All entities are plain mutable objects for performance. `FrameResult` is a per-f
 | Concern | Owner | Update Frequency |
 | :--- | :--- | :--- |
 | Physics, collisions, entity lists | `GameEngine` (C# fields) | Every frame (~60 Hz) |
-| Canvas pixels | `gameRenderer` (JS) | Every frame |
+| Canvas pixels | Active renderer (JS) | Every frame |
 | HUD (time, score, wave, lives, buffs) | `Game.razor` Blazor state | Every 100 ms via timer; immediate on key `HudState` changes |
 | High scores | `HighScoreService` + `localStorage` | On game-over restart |
 
@@ -363,7 +385,7 @@ The renderer adds polish beyond the original wireframe aesthetic:
 - Explosion spark particles on asteroid destruction and player hits
 - Power-up pickup orbs and active shield ring
 - Screen shake on impacts
-- Vignette and subtle scanline overlay (CSS)
+- Vignette (canvas pass)
 - Blazor overlays for pause, wave transition, and game over
 
 ### 8.10 Sound Engine (Procedural Synthesis)
@@ -392,7 +414,7 @@ Audio is synthesized in JavaScript using the Web Audio API — no audio files:
 ```
 index.html
   └─ blazor.webassembly.js   (boots .NET WASM runtime)
-  └─ game.js                  (registers window.gameLoop, gameRenderer, etc.)
+  └─ game.js                  (registers window.gameLoop, audio, and storage)
 
 Program.cs
   └─ WebAssemblyHostBuilder
