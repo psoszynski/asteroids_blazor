@@ -12,6 +12,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { AdaptiveQuality } from './adaptive-quality.js';
+import { drawPowerUpIcon } from './powerup-icons.js';
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
@@ -20,26 +21,25 @@ const ROCK_VARIANTS = 10;
 const ROCK_MATERIAL_COLORS = ['#8d97a8', '#9c8168', '#a9b6c4', '#5f6674'];
 // Mirrors canvas-renderer.js POWERUP_COLORS so the same glyph/color identifies a pickup in either renderer.
 const POWERUP_STYLES = [
-    { fill: '#5ce8ff', glow: '#2ab8ff', label: 'S' },
-    { fill: '#ffb347', glow: '#ff6a00', label: 'R' },
-    { fill: '#d98cff', glow: '#b44dff', label: 'T' }
+    { fill: '#5ce8ff', glow: '#2ab8ff' },
+    { fill: '#ffb347', glow: '#ff6a00' },
+    { fill: '#d98cff', glow: '#b44dff' }
 ];
 
-// A crisp canvas-drawn letter glyph, used as a texture on a camera-facing plane so each pickup
-// reads as its power-up type (Shield/RapidFire/TripleShot) instead of an unlabeled shape.
-function createLabelTexture(letter) {
+// A crisp canvas-drawn vector glyph, used as a texture on a camera-facing plane so each
+// pickup reads as its power-up type (Shield/RapidFire/TripleShot) instead of an unlabeled shape.
+function createIconTexture(type) {
     const size = 128;
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = size;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, size, size);
+    ctx.translate(size / 2, size / 2 + 4);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 84px "Share Tech Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#ffffff';
     ctx.shadowColor = 'rgba(0,0,0,0.65)';
     ctx.shadowBlur = 10;
-    ctx.fillText(letter, size / 2, size / 2 + 4);
+    drawPowerUpIcon(ctx, type, 46);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
@@ -479,8 +479,8 @@ export function createThreeRenderer() {
                     }`
             }));
 
-            // Glowing orb + halo ring + a readable letter glyph identify each power-up type,
-            // matching the canvas renderer's Shield/RapidFire/TripleShot labels and colors.
+            // Glowing orb + halo ring + a readable vector glyph identify each power-up type,
+            // matching the canvas renderer's Shield/RapidFire/TripleShot icons and colors.
             pickupOrbGeometry = own(new THREE.SphereGeometry(8, 20, 14));
             pickupRingGeometry = own(new THREE.TorusGeometry(11.5, 1.1, 8, 28));
             pickupLabelGeometry = own(new THREE.PlaneGeometry(13, 13));
@@ -489,8 +489,8 @@ export function createThreeRenderer() {
                 roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.88
             })));
             pickupRingMaterials = POWERUP_STYLES.map(style => own(new THREE.MeshBasicMaterial({ color: style.fill })));
-            pickupLabelMaterials = POWERUP_STYLES.map(style => own(new THREE.MeshBasicMaterial({
-                map: own(createLabelTexture(style.label)), transparent: true, depthWrite: false
+            pickupLabelMaterials = POWERUP_STYLES.map((style, type) => own(new THREE.MeshBasicMaterial({
+                map: own(createIconTexture(type)), transparent: true, depthWrite: false
             })));
 
             particleGeometry = own(new THREE.CircleGeometry(1, 6));
